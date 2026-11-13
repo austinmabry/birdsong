@@ -37,9 +37,9 @@ Menu names below are Cloudflare's as of November 2026; they move from time to ti
 | Containers | Read-only, all Linux capabilities dropped (nginx keeps four to start), no privilege escalation, cloudflared not root, memory/CPU/process limits, rotated logs | A bug in nginx or cloudflared becoming a foothold |
 | Networks | cloudflared and Birdsong share a network with no way out; cloudflared cannot reach BirdNET-Go or your LAN through it | cloudflared being used to reach other machines at home |
 
-The LAN door (`http://<server>:8095`) carries on as before for use at home, with the same
+The LAN door (`http://<server>:8089`, set by `LAN_PORT` in `.env`) is for use at home, with the same
 read-only allow-list but no sign-in. It turns away anything that arrived through Cloudflare,
-so pointing the tunnel at it by mistake fails closed. Never forward port 8095 on your router:
+so pointing the tunnel at it by mistake fails closed. Never forward that port on your router:
 the tunnel replaces that. Docker publishes ports past host firewalls such as ufw, so on a
 server with a public IP address of its own, set `LAN_BIND` in `.env` to the server's LAN
 address (or `127.0.0.1`).
@@ -161,7 +161,7 @@ right of the web interface).
 
 1. From **Apps**, install **Docker Compose Manager**. It provides the `docker compose` command.
 2. If you installed Birdsong earlier from its Unraid template, stop and remove that container
-   in the **Docker** tab: the compose file uses the same name (`birdsong`) and LAN port (8095).
+   in the **Docker** tab: the compose file uses the same container name (`birdsong`).
 3. Fetch this repository into appdata. Unraid has no `git` of its own, so a throwaway git
    container does it:
 

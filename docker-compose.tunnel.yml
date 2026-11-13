@@ -26,9 +26,9 @@ services:
       REQUIRE_CLOUDFLARE_ACCESS: ${REQUIRE_CLOUDFLARE_ACCESS:-true}
       ALLOWED_IPS: ${ALLOWED_IPS:-}
     ports:
-      # The LAN door, http://<this server>:8095, as before. LAN_BIND=127.0.0.1 in .env
+      # The LAN door, http://<this server>:8089 (LAN_PORT in .env). LAN_BIND=127.0.0.1
       # keeps it to this server only. The internet door (8081) is never published.
-      - "${LAN_BIND:-0.0.0.0}:${LAN_PORT:-8095}:80"
+      - "${LAN_BIND:-0.0.0.0}:${LAN_PORT:-8089}:80"
     networks: [tunnel, lan]
     # Hardening: nothing in the container can be changed, no privileges beyond what nginx
     # needs to start, and limits on what a misbehaving process could use.
