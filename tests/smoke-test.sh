@@ -34,6 +34,12 @@ req() {
     CODE=$(curl -sS --path-as-is -o "$BODY" -D "$HEADERS" -w '%{http_code}' "$@" "http://127.0.0.1:$port$path" 2>/dev/null || echo 000)
 }
 header() { grep -i "^$1:" "$HEADERS" | head -1 | cut -d: -f2- | sed 's/^ *//; s/\r$//'; }
+# raw PORT TEXT: send TEXT as-is over a socket (for requests curl will not make); reply in BODY
+raw() {
+    BODY="$TMP/body"
+    timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/'"$1"'; printf "%b" "$2" >&3; cat <&3' _ "$1" "$2" 2>/dev/null \
+        | sed '1,/^\r\{0,1\}$/d' >"$BODY" || true   # keep only the body
+}
 
 # expect_code LABEL WANT PORT PATH [curl args...]
 expect_code() {
@@ -94,6 +100,9 @@ expect_code "app.js" 200 "$LAN" /app.js
 expect_code "app.css" 200 "$LAN" /app.css
 expect_code "font" 200 "$LAN" /fonts/IMFeENrm28P.ttf
 expect_code "artwork manifest" 200 "$LAN" /art/artwork/classic/manifest.json
+expect_code "artwork credits" 200 "$LAN" /art/artwork/classic/ATTRIBUTION.md
+header_has  "credits served as plain text" Content-Type "text/plain"
+blocked "other kinds of file under /art/ are never served" "$LAN" /art/artwork/classic/page.html
 header_has  "artwork is cached" Cache-Control "max-age=604800"
 header_has  "security headers survive on cached files" Content-Security-Policy "default-src 'none'"
 expect_code "healthz" 200 "$LAN" /healthz
@@ -107,6 +116,17 @@ blocked "directory listing" "$LAN" /art/
 body_lacks "error pages do not name the server" "nginx"
 blocked "POST" "$LAN" / -X POST -d x=1
 blocked "TRACE" "$LAN" / -X TRACE
+blocked "front page under a doubled slash (open-redirect bait)" "$LAN" "//evil.example/..%2F/"
+blocked "encoded dot segment" "$LAN" "/%2e%2e/index.html"
+blocked "dot segment" "$LAN" "/art/./artwork/classic/manifest.json"
+req "$LAN" /app.js -H "Range: bytes=999999999-"
+[ "$CODE" = 416 ] && ! grep -q nginx "$BODY" && pass "out-of-range request gets the plain reply (416)" || fail "416 reply" "$CODE $(head -c 120 "$BODY")"
+req "$LAN" / -H "X-Big: $(head -c 20000 /dev/zero | tr '\0' a)"
+[ "${CODE:0:1}" = 4 ] && ! grep -q nginx "$BODY" && pass "oversized header gets the plain reply ($CODE)" || fail "oversized header reply" "$CODE $(head -c 120 "$BODY")"
+raw "$LAN" 'GET / HTTP/9.9\r\nHost: x\r\n\r\n'
+grep -q "Not available" "$BODY" && ! grep -q nginx "$BODY" && pass "unknown HTTP version gets the plain reply" || fail "unknown HTTP version reply" "$(head -c 160 "$BODY")"
+raw "$LAN" 'GET / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip\r\n\r\n'
+grep -q "Not available" "$BODY" && ! grep -q nginx "$BODY" && pass "unknown transfer encoding gets the plain reply" || fail "transfer encoding reply" "$(head -c 160 "$BODY")"
 blocked "OPTIONS" "$LAN" / -X OPTIONS
 
 echo "LAN door: BirdNET-Go calls the page makes"
@@ -146,8 +166,17 @@ blocked "one detection" "$LAN" /api/v2/detections/1
 blocked "clip extraction" "$LAN" /api/v2/audio/1/clip -X POST
 blocked "spectrogram generation" "$LAN" /api/v2/spectrogram/1/generate -X POST
 blocked "POST to an allowed route" "$LAN" /api/v2/analytics/species/summary -X POST
-blocked "huge result count" "$LAN" "/api/v2/detections?numResults=1000"
+blocked "huge result count" "$LAN" "/api/v2/detections?species=Turdus%20merula&numResults=1000&includeWeather=true"
 blocked "missing result count" "$LAN" "/api/v2/detections?species=x"
+blocked "result count hidden by upper case" "$LAN" "/api/v2/detections?NUMRESULTS=1&numResults=1000"
+blocked "result count hidden by encoding" "$LAN" "/api/v2/detections?num%52esults=1000&numResults=1"
+blocked "extra detection options" "$LAN" "/api/v2/detections?species=Turdus%20merula&numResults=4&includeWeather=true&queryType=all&offset=5000"
+blocked "audio with options (denoising)" "$LAN" "/api/v2/audio/123?denoise=heavy"
+blocked "spectrogram at another size" "$LAN" "/api/v2/spectrogram/123?width=1999&raw=true"
+blocked "spectrogram with extra options" "$LAN" "/api/v2/spectrogram/123?size=md&denoise=heavy"
+blocked "summary with extra options" "$LAN" "/api/v2/analytics/species/summary?start_date=2026-01-01&end_date=2026-01-02&limit=100000"
+blocked "species name with other characters" "$LAN" "/api/v2/species?scientific_name=Turdus%26x=1"
+blocked "photo with options" "$LAN" "/api/v2/media/image/Turdus%20merula?x=1"
 blocked "old API" "$LAN" /api/v1/detections
 blocked "audio by file name" "$LAN" /api/v2/media/audio/clip.wav
 blocked "unknown API path" "$LAN" /api/v2/anything
@@ -166,6 +195,8 @@ blocked "semicolon parameter" "$LAN" '/api/v2/species;x=1'
 echo "Internet door (Cloudflare Tunnel)"
 expect_code "refused without Cloudflare Access" 403 "$NET_DOOR" /
 body_lacks "refusal does not name the server" "nginx"
+req "$NET_DOOR" / -H "Host: a/b"
+[ "${CODE:0:1}" = 4 ] && ! grep -q nginx "$BODY" && pass "malformed request without Access gets the plain reply ($CODE)" || fail "malformed request without Access" "$CODE $(head -c 120 "$BODY")"
 expect_code "page through Cloudflare Access" 200 "$NET_DOOR" / "${CF[@]}"
 header_has  "HSTS" Strict-Transport-Security "max-age=31536000"
 header_is   "no framing" X-Frame-Options DENY
@@ -201,10 +232,19 @@ sleep 2
 OPEN=$(docker port "$RUN-open" 8081/tcp | head -1 | sed 's/.*://')
 expect_code "REQUIRE_CLOUDFLARE_ACCESS=false opens the internet door" 200 "$OPEN" /
 docker run --name "$RUN-bad" -e 'BIRDNET_URL=http://birdnet:8080; } server { listen 9; ' "$IMAGE" >/dev/null 2>&1
-if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && docker logs "$RUN-bad" 2>&1 | grep -q "BIRDNET_URL should look like"; then
+docker logs "$RUN-bad" >"$TMP/badlog" 2>&1
+if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "BIRDNET_URL should look like" "$TMP/badlog"; then
     pass "a malformed BIRDNET_URL stops the container"
 else
-    fail "malformed BIRDNET_URL" "$(docker logs "$RUN-bad" 2>&1 | tail -3)"
+    fail "malformed BIRDNET_URL" "$(tail -3 "$TMP/badlog")"
+fi
+docker rm -f "$RUN-bad" >/dev/null 2>&1
+docker run --name "$RUN-bad" -e "BIRDNET_URL=$(printf 'http://birdnet:8080\n; add_header X-Injected yes always')" "$IMAGE" >/dev/null 2>&1
+docker logs "$RUN-bad" >"$TMP/badlog" 2>&1
+if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "BIRDNET_URL should look like" "$TMP/badlog"; then
+    pass "a BIRDNET_URL with a second line stops the container"
+else
+    fail "multi-line BIRDNET_URL" "$(tail -3 "$TMP/badlog")"
 fi
 
 echo

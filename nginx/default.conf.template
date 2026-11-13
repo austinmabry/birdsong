@@ -1,5 +1,5 @@
-# Birdsong's web server. Rendered at container start: ${BIRDNET_URL} and the ${BS_...}
-# values come from the environment (see 05-birdsong.envsh); plain $names are nginx's own.
+# Birdsong's web server. Rendered at container start: the BIRDNET_URL and BS_* placeholders
+# are filled in from the environment (see 05-birdsong.envsh); plain $names are nginx's own.
 #
 # Two doors into the same page:
 #   :80    the LAN door, as before. Also what Unraid's Tailscale Serve and Home Assistant use.
@@ -49,17 +49,29 @@ map $http_cf_access_jwt_assertion $bs_has_access_token {
     ""      0;
     default 1;
 }
-map "${BS_REQUIRE_ACCESS}:$bs_has_access_token" $bs_access_refused {
-    "1:0"   1;
-    default 0;
+# (/bs-error is exempt so that showing an error page cannot itself be refused.)
+map "${BS_REQUIRE_ACCESS}:$bs_has_access_token:$uri" $bs_access_refused {
+    "1:0:/bs-error" 0;
+    "~^1:0:"        1;
+    default         0;
 }
 
 # Anything that passed through Cloudflare carries these headers. The LAN door turns such
 # requests away, so a tunnel pointed at port 80 by mistake fails closed instead of
 # skipping the internet door's checks.
-map "$http_cf_ray$http_cf_connecting_ip" $bs_via_cloudflare {
-    ""      0;
-    default 1;
+map "$uri|$http_cf_ray$http_cf_connecting_ip" $bs_via_cloudflare {
+    "~^/bs-error\|" 0;
+    "~\|[^|]+$"     1;
+    default         0;
+}
+
+# Paths with encoded slashes, dots or backslashes, doubled slashes or dot segments. Nothing
+# Birdsong links to looks like this, and nginx and a browser can read such a path differently
+# (//elsewhere.example/..%2F/ is Birdsong's front page to nginx, another site to a browser).
+map "$uri|$request_uri" $bs_odd_path {
+    "~^/bs-error\|"                              0;
+    "~\|[^?]*(//|%2[EeFf]|%5[Cc]|/\.\.?(/|\?|$))" 1;
+    default                                      0;
 }
 
 # ---- BirdNET-Go calls: plain paths only ----

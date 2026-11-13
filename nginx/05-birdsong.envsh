@@ -5,8 +5,13 @@
 # A trailing slash on BIRDNET_URL would make nginx drop the /api prefix; remove it.
 BIRDNET_URL="${BIRDNET_URL%/}"
 # BIRDNET_URL is written into nginx's config, so take only a plain address:
-# http:// or https://, a host name or IP address, and an optional port. Nothing else.
-if ! printf '%s' "$BIRDNET_URL" | grep -Eq '^https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$'; then
+# http:// or https://, a host name or IP address, and an optional port. Nothing else,
+# not even a second line.
+case "$BIRDNET_URL" in
+    ''|*[!]A-Za-z0-9:/.[-]*) bs_url_ok=no ;;
+    *)                       bs_url_ok=yes ;;
+esac
+if [ "$bs_url_ok" != yes ] || ! printf '%s' "$BIRDNET_URL" | grep -Eq '^https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$'; then
     echo "birdsong: BIRDNET_URL should look like http://192.168.1.50:8080 (http:// or https://, an address, an optional port and nothing more), not: $BIRDNET_URL" >&2
     exit 1
 fi

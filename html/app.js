@@ -671,9 +671,9 @@ $("#setForm").addEventListener("submit", () => {
   let v = $("#srv").value.trim().replace(/\/+$/, "");
   if (v && !/^https?:\/\//i.test(v)) v = "http://" + v;
   if (cleanServer(v)) store.set("server", cleanServer(v)); else store.del("server");
-  location.href = location.pathname;
+  location.href = location.origin + location.pathname;   // always this same site, whatever the path looks like
 });
-$("#showSample").addEventListener("click", () => { location.href = location.pathname + "?demo"; });
+$("#showSample").addEventListener("click", () => { location.href = location.origin + location.pathname + "?demo"; });
 document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
 document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) d.close(); }));
 

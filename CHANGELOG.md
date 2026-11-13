@@ -20,6 +20,16 @@
   settings, sign-in, deleting and restarting, and BirdNET-Go is told to
   trust this container. Only the eight read-only calls the page makes are
   now passed on, and only as `GET` with plain paths.
+- Each allowed call accepts only the exact query string the page sends,
+  so BirdNET-Go options such as denoising, custom spectrogram sizes or
+  large result pages cannot be asked for through Birdsong.
+- Paths with encoded slashes or dots, doubled slashes or dot segments are
+  refused everywhere (a crafted `//other.site/..%2F/` link could otherwise
+  send the page's buttons to another site), and the page's own reloads
+  always stay on Birdsong's address.
+- Only the artwork's own kinds of file are copied into the image and served
+  from `/art/`, never through symbolic links; nginx ignores `X-Accel-*`
+  headers from BirdNET-Go; error replies are plain for every status.
 - No longer passed to BirdNET-Go: cookies, `Authorization`, Cloudflare's
   sign-in token, and `X-Forwarded-For` / `X-Real-IP` (which a visitor
   could set to pose as a LAN address). BirdNET-Go's cookies, CORS headers
@@ -30,8 +40,11 @@
 - Removed the undocumented `?server=` link parameter, which let a link
   point the page at any server. The address now comes only from Station
   settings. Links on cards are followed only if they are `http(s)`.
-- A malformed `BIRDNET_URL` now stops the container with a message instead
-  of being written into nginx's config.
+- A malformed `BIRDNET_URL` (including one with a second line) now stops
+  the container with a message instead of being written into nginx's config.
+- README: BirdNET-Go no longer needs to trust Birdsong's address; with
+  private mode off it treats Birdsong as an anonymous visitor, which is
+  safer.
 - `tests/smoke-test.sh`, run on every push, checks all of the above.
 
 ### Screens left on

@@ -57,10 +57,14 @@ your BirdNET-Go as the container can reach it: use the server's IP, not
 - **Compose:** see `docker-compose.yml`.
 - **Preview without a station:** open `/?demo` for a sample plate.
 
-If BirdNET-Go has a password or private mode switched on, allow this
-container's address in BirdNET-Go's security settings. That is safe: Birdsong
-passes on only the handful of read-only calls the page makes, never
-BirdNET-Go's settings, sign-in, deleting or restarting. Recordings and
+A password on BirdNET-Go is fine and recommended: everything Birdsong reads
+is what BirdNET-Go shows any visitor, so Birdsong needs no sign-in. Only if
+BirdNET-Go's **private mode** is on does it hide that too; then either switch
+private mode off (best) or let this container's address bypass sign-in in
+BirdNET-Go's security settings. The bypass trusts every container on the
+same Docker host, so prefer the first. Either way, Birdsong passes on only
+the handful of read-only calls the page makes, never BirdNET-Go's settings,
+sign-in, deleting or restarting. Recordings and
 spectrograms appear only if BirdNET-Go keeps audio clips, and weather
 only if it has a weather provider switched on.
 
@@ -150,9 +154,9 @@ To pin a species to an illustration of your choice for everyone, add it
 to `CURATED_RAW` near the top of `html/app.js`.
 
 `tests/smoke-test.sh` checks a built image's security: it runs it read-only
-beside a stand-in for BirdNET-Go and tries about ninety requests against both
-doors, from the page's own calls to path tricks aimed at BirdNET-Go's
-settings. It runs on every push.
+beside a stand-in for BirdNET-Go and makes over a hundred requests against
+both doors, from the page's own calls to path, query and protocol tricks
+aimed at BirdNET-Go. It runs on every push.
 
     docker build -t birdsong:test . && tests/smoke-test.sh birdsong:test
 
@@ -172,9 +176,11 @@ Birdsong has two doors into the same page:
 On both doors:
 
 - Only `GET` and `HEAD`, and only the page, its artwork and fonts, and eight
-  read-only BirdNET-Go calls. Everything else under `/api` is refused,
-  paths with encoded slashes or dots included, so nothing can be steered to
-  BirdNET-Go's settings, sign-in, deleting or restarting.
+  read-only BirdNET-Go calls, each with exactly the query string the page
+  sends. Everything else under `/api` is refused, paths with encoded
+  slashes or dots included, so nothing can be steered to BirdNET-Go's
+  settings, sign-in, deleting or restarting, or to costly options such as
+  denoising or custom spectrograms.
 - No cookies, sign-in tokens or forwarded addresses are passed to
   BirdNET-Go, and nothing it sends can set cookies, open the data to other
   sites or show its internal error messages.
@@ -182,6 +188,8 @@ On both doors:
   `nosniff`, no referrer, and no version number in the server header.
 - The page's BirdNET-Go address comes only from its own Station settings,
   never from the link that opened it, and it follows only `http(s)` links.
+- Only the artwork's own kinds of file are served from `/art/`, and never
+  through a symbolic link.
 
 `docker-compose.tunnel.yml` also runs both containers read-only, with every
 Linux capability dropped except the four nginx needs to start, no privilege

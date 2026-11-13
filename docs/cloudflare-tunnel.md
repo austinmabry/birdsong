@@ -31,15 +31,18 @@ Menu names below are Cloudflare's as of November 2026; they move from time to ti
 | Cloudflare Access | Email one-time code for listed addresses only | Everyone you have not invited |
 | cloudflared, *Protect with Access* | Checks the signature on Access's token before passing a request on | Requests that slip past Access, e.g. if the Access app is deleted or mis-set |
 | Birdsong's internet door (port 8081) | Refuses any request without an Access token (fail closed) | A tunnel set up without Access ending up open to everyone |
-| Read-only allow-list | 8 GET calls to BirdNET-Go; plain paths only; no cookies, tokens or forwarded addresses passed on; BirdNET-Go's error messages hidden | Changing settings, deleting detections, restarting, path tricks that sneak past the list, posing as a LAN client |
+| Read-only allow-list | 8 GET calls to BirdNET-Go, each with exactly the query string the page sends; plain paths only; no cookies, tokens or forwarded addresses passed on; BirdNET-Go's error messages hidden | Changing settings, deleting detections, restarting, costly options (denoising, custom spectrograms, huge result pages), path tricks that sneak past the list, posing as a LAN client |
 | Rate limits | 20 page and 5 data requests a second per visitor, with headroom for bursts | Hammering BirdNET-Go |
 | Browser protections | Strict Content-Security-Policy (no inline or outside scripts), HSTS, no framing, no referrer, no sniffing | Script injection, clickjacking, leaking the address to other sites |
 | Containers | Read-only, all Linux capabilities dropped (nginx keeps four to start), no privilege escalation, cloudflared not root, memory/CPU/process limits, rotated logs | A bug in nginx or cloudflared becoming a foothold |
 | Networks | cloudflared and Birdsong share a network with no way out; cloudflared cannot reach BirdNET-Go or your LAN through it | cloudflared being used to reach other machines at home |
 
 The LAN door (`http://<server>:8095`) carries on as before for use at home, with the same
-read-only allow-list. It turns away anything that arrived through Cloudflare, so pointing
-the tunnel at it by mistake fails closed.
+read-only allow-list but no sign-in. It turns away anything that arrived through Cloudflare,
+so pointing the tunnel at it by mistake fails closed. Never forward port 8095 on your router:
+the tunnel replaces that. Docker publishes ports past host firewalls such as ufw, so on a
+server with a public IP address of its own, set `LAN_BIND` in `.env` to the server's LAN
+address (or `127.0.0.1`).
 
 ## What you need
 
@@ -156,7 +159,8 @@ Unraid's own **Check for updates** cannot update an image built on the server, s
    (Port 8081, the internet door, not 80.)
 3. Open **Additional application settings > Access** and switch on **Protect with Access**.
    Enter your team name and the AUD tag from step 1. cloudflared now checks every request's
-   Access token itself before Birdsong sees it.
+   Access token itself before Birdsong sees it. Do not skip this: Birdsong can only see that
+   a token is present; this is what checks it is genuine.
 4. Save. Cloudflare creates the DNS record and the HTTPS certificate on its own.
 
 ## 4. Check the locks
@@ -243,9 +247,14 @@ browser tab from a phone or laptop, works just as well.
 - **Recordings** can catch voices in the background. Anyone signed in can play recent
   recordings of each species, as at home. BirdNET-Go's privacy filter, which discards
   clips with human speech, is worth switching on.
-- BirdNET-Go itself should stay on your LAN only. Keep its own password on; Birdsong does
-  not need it switched off, only the container's address allowed in BirdNET-Go's security
-  settings, as the main README says.
+- **BirdNET-Go should treat Birdsong as a stranger.** Keep BirdNET-Go on your LAN only,
+  with its own password on and **private mode off**, and do not add Birdsong (or the Docker
+  host) to its trusted addresses. Everything Birdsong reads is what BirdNET-Go shows any
+  visitor, so nothing is lost, and anything that somehow got past Birdsong's checks would
+  still meet BirdNET-Go's sign-in. If you need private mode on, BirdNET-Go must trust the
+  address Birdsong's requests come from, which is the Docker host's: every container on
+  that server, cloudflared included. Then also use the firewall rule below that stops
+  cloudflared reaching your LAN.
 
 ## Optional: a firewall around the containers
 
@@ -274,5 +283,5 @@ apply when BirdNET-Go runs in a container on the same Docker network as Birdsong
 | A 403 or 502 error after signing in (not *Not available.*) | cloudflared turned the request away: *Protect with Access* has the wrong team name or AUD tag, or cloudflared cannot reach `<team>.cloudflareaccess.com` to check the token. |
 | The tunnel never turns Healthy | The token in `.env` is incomplete, or outgoing port 7844 is blocked; see `logs cloudflared`. |
 | The sample plate, "BirdNET-Go could not be reached" | `BIRDNET_URL` is wrong or unreachable from the container. Test from the server: `curl http://192.168.1.50:8080/api/v2/analytics/species/summary`. |
-| "BirdNET-Go asked for a sign-in" | Allow the Birdsong container's address in BirdNET-Go's security settings. |
+| "BirdNET-Go asked for a sign-in" | BirdNET-Go's private mode is on. Switch it off (best), or see "BirdNET-Go should treat Birdsong as a stranger" above. |
 | The container stops at once, "BIRDNET_URL should look like..." | `BIRDNET_URL` must be just `http://address:port`, with no path. |

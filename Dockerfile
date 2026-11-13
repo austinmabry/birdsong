@@ -1,9 +1,13 @@
 # ---- stage 1: fetch the Fugleramme artwork (CC BY-SA 4.0) -------------------
 FROM alpine/git AS art
 ARG FUGLERAMME_REF=main
+# Only plain files of the kinds the page uses (pictures, the manifest, the credits): nothing
+# the project might add later can end up served as a page or script from Birdsong's address.
 RUN git clone --depth 1 --branch "${FUGLERAMME_REF}" https://github.com/arnegiacomo/fugleramme /src \
- && mkdir -p /art/artwork \
- && cp -r /src/assets/artwork/classic /art/artwork/classic \
+ && mkdir -p /art/artwork/classic \
+ && cd /src/assets/artwork/classic \
+ && find . -type f \( -name '*.webp' -o -name '*.png' -o -name '*.json' -o -name 'ATTRIBUTION.md' \) \
+      | tar -cf - -T - | tar -xf - -C /art/artwork/classic \
  && cp /src/assets/birdnet_aliases.json /src/assets/ATTRIBUTION.md /art/ \
  && git -C /src rev-parse HEAD > /art/FUGLERAMME_COMMIT
 
