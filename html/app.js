@@ -691,7 +691,80 @@ async function loadBlurb(sp) {
 }
 
 const player = $("#player");
-function stopAudio() { player.pause(); document.querySelectorAll("#recs button").forEach(b => b.textContent = "Play"); }
+/* ---------- playing recordings, at a volume you can hear ----------
+   Bird recordings are often very quiet: a PUC's peak 50 to 65 dB below full volume, about a
+   thousandth of it, and much of that is low rumble rather than the bird. So a recording is
+   fetched and decoded, rumble below 200 Hz is filtered out, the loudest moment of the call is
+   measured, and the sound is raised so that moment comes close to full volume (by up to 66 dB),
+   with a limiter catching anything still too loud. If the browser cannot process sound this
+   way, the recording plays as it is. */
+const LOUD = { ctx: null, src: null, token: 0, target: 0.9, maxGain: Math.pow(10, 66 / 20), cutoff: 200 };
+
+/* Loudest sample above the cutoff, between two sample positions: the same filter as loudSound's,
+   started a little early so it has settled (and skipping its first moments when it cannot be). */
+function filteredPeak(data, sr, from, to) {
+  const w = 2 * Math.PI * LOUD.cutoff / sr, c = Math.cos(w), al = Math.sin(w) / (2 * Math.SQRT1_2), a0 = 1 + al;
+  const b0 = (1 + c) / 2 / a0, b1 = -(1 + c) / a0, b2 = b0, a1 = -2 * c / a0, a2 = (1 - al) / a0;
+  const start = Math.max(0, from - Math.round(0.25 * sr)), measure = Math.max(from, start + Math.round(0.05 * sr));
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0, pk = 0;
+  for (let i = start; i < to; i++) {
+    const x = data[i], y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    if (i >= measure && (y > pk || -y > pk)) pk = y < 0 ? -y : y;
+  }
+  return pk;
+}
+
+/* Sets up and starts the louder sound on any AudioContext (an OfflineAudioContext too, for testing):
+   the clip [from, to] in seconds, or the whole recording. Returns the source and the gain used. */
+function loudSound(ctx, buf, clip) {
+  const sr = buf.sampleRate, from = clip ? Math.max(0, clip[0]) : 0, to = clip ? Math.min(buf.duration, clip[1]) : buf.duration;
+  if (!(to > from)) throw new Error("empty clip");
+  let pk = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) pk = Math.max(pk, filteredPeak(buf.getChannelData(ch), sr, Math.floor(from * sr), Math.floor(to * sr)));
+  const gain = Math.min(LOUD.maxGain, LOUD.target / Math.max(pk, 1e-9));
+  const src = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), amp = ctx.createGain(), lim = ctx.createDynamicsCompressor();
+  src.buffer = buf;
+  hp.type = "highpass"; hp.frequency.value = LOUD.cutoff; hp.Q.value = -3.0103;   // in dB: a Butterworth filter, as filteredPeak's
+  lim.threshold.value = -1; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1;
+  const t = ctx.currentTime, len = to - from;   // short fades in and out, so the cut ends of the clip don't click
+  amp.gain.setValueAtTime(0, t); amp.gain.linearRampToValueAtTime(gain, t + 0.02);
+  amp.gain.setValueAtTime(gain, t + Math.max(0.02, len - 0.05)); amp.gain.linearRampToValueAtTime(0, t + len);
+  src.connect(hp); hp.connect(amp); amp.connect(lim); lim.connect(ctx.destination);
+  src.start(t, from, len);
+  return { src, gain };
+}
+
+/* Plays a recording through loudSound, or as it is if that isn't possible. */
+async function playLoud(url, clip, button) {
+  const token = ++LOUD.token, AC = window.AudioContext || window.webkitAudioContext;
+  try {
+    if (!AC) throw new Error("no Web Audio");
+    if (!LOUD.ctx) LOUD.ctx = new AC();
+    if (LOUD.ctx.state === "suspended") LOUD.ctx.resume();   // allowed: this runs from a click
+    button.textContent = "Loading…";
+    const r = await fetch(url, { redirect: "follow" });
+    if (!r.ok) throw new Error("audio " + r.status);
+    const data = await r.arrayBuffer();
+    const buf = await new Promise((res, rej) => LOUD.ctx.decodeAudioData(data, res, rej));
+    if (token !== LOUD.token) return;   // stopped, or another recording chosen, while loading
+    const { src } = loudSound(LOUD.ctx, buf, clip);
+    LOUD.src = src;
+    src.onended = () => { if (LOUD.src === src) stopAudio(); };
+    button.textContent = "Stop";
+  } catch (e) {
+    if (token !== LOUD.token) return;
+    player.dataset.end = clip ? clip[1] : "";
+    if (clip) player.addEventListener("loadedmetadata", () => { player.currentTime = clip[0]; }, { once: true });
+    player.src = url; player.play().then(() => button.textContent = "Stop").catch(() => { button.textContent = "Play"; });
+  }
+}
+
+function stopAudio() {
+  LOUD.token++;
+  if (LOUD.src) { const s = LOUD.src; LOUD.src = null; try { s.onended = null; s.stop(); } catch (e) {} }
+  player.pause(); document.querySelectorAll("#recs button").forEach(b => b.textContent = "Play");
+}
 player.addEventListener("ended", stopAudio);
 player.addEventListener("pause", () => document.querySelectorAll("#recs button").forEach(b => b.textContent = "Play"));
 player.addEventListener("timeupdate", () => { if (player.dataset.end && player.currentTime >= +player.dataset.end) player.pause(); });   // a BirdWeather clip stops at the end of the call
@@ -806,10 +879,8 @@ async function loadExtras(sp) {
       if (live && audio) {
         const b = document.createElement("button"); b.textContent = "Play"; b.setAttribute("aria-label", "Play the recording from " + dayLabel(r.date) + " at " + String(r.time || "").slice(0, 5));
         b.addEventListener("click", () => {
-          const playing = b.textContent === "Stop"; stopAudio(); if (playing) return;
-          player.dataset.end = r.clip ? r.clip[1] : "";
-          if (r.clip) player.addEventListener("loadedmetadata", () => { player.currentTime = r.clip[0]; }, { once: true });
-          player.src = audio; player.play().then(() => b.textContent = "Stop").catch(() => { b.textContent = "Play"; });
+          const playing = b.textContent !== "Play"; stopAudio(); if (playing) return;
+          playLoud(audio, r.clip, b);
         });
         li.prepend(b);
       }

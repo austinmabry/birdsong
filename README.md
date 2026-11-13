@@ -34,7 +34,8 @@ including a little owl heard in the small hours.
   - a note when the bird is new to the station, the year or the season
   - calls by hour of the day, and calls each day for the last thirty days
   - the latest recordings, with the weather at the time, playback and a
-    spectrogram
+    spectrogram; quiet recordings are raised to a comfortable volume as
+    they play, with low rumble filtered out
   - other illustrations of the species to choose from
 - **One-screen mode** (on by default): the plate shrinks so the index
   fits beneath it without scrolling. Switch it off under Station settings.

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Recordings you can hear
+- Recordings play at a comfortable volume. Many are very quiet: PUC
+  recordings measured 50 to 65 dB below full volume, about a thousandth of
+  it. Before playing, the page filters out rumble below 200 Hz, measures the
+  loudest moment of the call and raises the sound so it comes close to full
+  volume (by up to 66 dB), with a limiter as a safety net. Works for
+  BirdNET-Go and BirdWeather alike; browsers that can't process sound this
+  way play the recording as it is.
+
 ### BirdWeather stations
 - New: draw the plate from a public BirdWeather station, such as a PUC,
   instead of BirdNET-Go. Set `BIRDWEATHER_STATION` to the station's

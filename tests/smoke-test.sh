@@ -327,6 +327,7 @@ blocked "no open GraphQL pass-through" "$BW" /graphql -X POST -d '{"query":"{x}"
 expect_code "internet door: refused without Cloudflare Access" 403 "$BW_NET" "/bw/station?station=12345"
 expect_code "internet door: through Cloudflare Access" 200 "$BW_NET" "/bw/station?station=12345" "${CF[@]}"
 header_has "internet door allows BirdWeather's pictures and recordings" Content-Security-Policy "media-src 'self' https://media.birdweather.com"
+header_has "internet door lets the page fetch recordings to raise their volume" Content-Security-Policy "connect-src 'self' https://commons.wikimedia.org https://en.wikipedia.org https://media.birdweather.com"
 expect_code "without a station, source.json says BirdWeather is off" 200 "$LAN" /source.json
 body_has "birdweather off" '"birdweatherStation":"","birdweather":"0"'
 blocked "without a station, no BirdWeather questions at all" "$LAN" "/bw/station?station=12345"
