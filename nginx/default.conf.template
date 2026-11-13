@@ -1,24 +1,141 @@
-# Rendered at container start: ${BIRDNET_URL} comes from the environment.
+# Birdsong's web server. Rendered at container start: ${BIRDNET_URL} and the ${BS_...}
+# values come from the environment (see 05-birdsong.envsh); plain $names are nginx's own.
+#
+# Two doors into the same page:
+#   :80    the LAN door, as before. Also what Unraid's Tailscale Serve and Home Assistant use.
+#   :8081  the internet door, for a Cloudflare Tunnel only. Never publish it on the host:
+#          cloudflared reaches it over a private Docker network (docker-compose.tunnel.yml).
+# Both serve only the page, its artwork and a short list of read-only BirdNET-Go calls
+# (birdsong-api.inc). Everything else is refused.
+
+server_tokens off;
+charset utf-8;
+
+# ---- size and time limits: Birdsong only ever answers small GET requests ----
+client_max_body_size 1k;
+client_body_buffer_size 1k;
+client_header_buffer_size 2k;
+large_client_header_buffers 4 16k;   # room for Cloudflare Access's sign-in cookie and token
+client_header_timeout 10s;
+client_body_timeout 10s;
+send_timeout 30s;
+reset_timedout_connection on;
+
+gzip on;
+gzip_types text/css application/javascript application/json image/svg+xml;
+
+# ---- rate limits, internet door only ----
+# Keyed by the visitor's own address (from Cloudflare; see real_ip below). Requests with an
+# empty key are not counted, which leaves the LAN door unlimited, as it always was.
+map $server_port $bs_limit_key {
+    8081    $binary_remote_addr;
+    default "";
+}
+limit_req_zone  $bs_limit_key zone=bs_page:10m rate=20r/s;
+limit_req_zone  $bs_limit_key zone=bs_api:10m  rate=5r/s;
+limit_conn_zone $bs_limit_key zone=bs_conn:10m;
+limit_req_status  429;
+limit_conn_status 429;
+limit_req_log_level warn;
+limit_conn_log_level warn;
+
+# ---- Cloudflare Access ----
+# Cloudflare Access adds its signed token to every request it lets through. Unless
+# REQUIRE_CLOUDFLARE_ACCESS=false, the internet door refuses requests without one, so a tunnel
+# with no Access application in front of it stays closed instead of open to everyone.
+# The token's signature is checked by cloudflared ("Protect with Access"); see
+# docs/cloudflare-tunnel.md.
+map $http_cf_access_jwt_assertion $bs_has_access_token {
+    ""      0;
+    default 1;
+}
+map "${BS_REQUIRE_ACCESS}:$bs_has_access_token" $bs_access_refused {
+    "1:0"   1;
+    default 0;
+}
+
+# Anything that passed through Cloudflare carries these headers. The LAN door turns such
+# requests away, so a tunnel pointed at port 80 by mistake fails closed instead of
+# skipping the internet door's checks.
+map "$http_cf_ray$http_cf_connecting_ip" $bs_via_cloudflare {
+    ""      0;
+    default 1;
+}
+
+# ---- BirdNET-Go calls: plain paths only ----
+# nginx picks a location from the decoded, tidied path, but forwards the path exactly as the
+# browser sent it. Allowing only plain paths (letters, digits, "_", "-", single "/", and %20
+# between the words of a species name) means the two can never disagree, so encoded
+# slashes or dots cannot steer a request to a BirdNET-Go route that is not on the list.
+map $request_uri $bs_plain_api_path {
+    "~^/api/v2(/[A-Za-z0-9_-]+)+(\?|$)"                                     1;
+    "~^/api/v2/media/image/[A-Za-z][A-Za-z-]*(%20[A-Za-z-]+){0,4}(\?|$)"    1;
+    default                                                                 0;
+}
+
+# ---- caching ----
+# One Cache-Control per path, sent with the security headers (add_header in a location
+# would silently drop those). BirdNET-Go's answers are never kept by Cloudflare or browsers.
+map $uri $bs_cache_control {
+    "~^/api/"   "private, no-store";
+    "~^/art/"   "public, max-age=604800";
+    "~^/fonts/" "public, max-age=2592000";
+    default     "no-cache";
+}
+
+# Logs for the internet door: the visitor (not cloudflared), Cloudflare's request ID and
+# country, and who Cloudflare Access signed in. Tokens and cookies are never logged.
+log_format bs_public '$remote_addr [$time_local] "$request" $status $body_bytes_sent '
+                     '"$http_user_agent" cf_ray=$http_cf_ray country=$http_cf_ipcountry '
+                     'user=$http_cf_access_authenticated_user_email';
+
+# ============================================================================
+# LAN door
+# ============================================================================
 server {
-    listen 80;
+    listen 80 default_server;
+    server_name _;
     root /usr/share/nginx/html;
     index index.html;
 
-    gzip on;
-    gzip_types text/css application/javascript application/json image/svg+xml;
+    # Internet traffic belongs on the internet door (8081); see $bs_via_cloudflare.
+    if ($bs_via_cloudflare) { return 403; }
 
-    # Detections, charts, audio clips and spectrograms come from BirdNET-Go.
-    location /api/ {
-        proxy_pass ${BIRDNET_URL};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 60s;
-    }
+    include /etc/nginx/birdsong/headers-lan.conf;
+    include /etc/nginx/birdsong/site.conf;
+    include /etc/nginx/conf.d/birdsong-api.inc;
 
-    # Artwork and typefaces never change within one image version.
-    location /art/   { expires 7d; add_header Cache-Control "public"; }
-    location /fonts/ { expires 30d; add_header Cache-Control "public"; }
+    location = /healthz { access_log off; default_type text/plain; return 200 "ok\n"; }
+}
 
-    location = /healthz { access_log off; return 200 "ok\n"; }
+# ============================================================================
+# Internet door: Cloudflare Tunnel only
+# ============================================================================
+server {
+    listen 8081 default_server;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # cloudflared connects from a private Docker address and passes on the visitor's
+    # address as Cloudflare saw it. This door is never published, so only cloudflared
+    # can reach it.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from 127.0.0.0/8;
+    set_real_ip_from fc00::/7;
+    set_real_ip_from ::1;
+    real_ip_header CF-Connecting-IP;
+
+    access_log /var/log/nginx/access.log bs_public;
+
+    limit_conn bs_conn 20;
+    limit_req zone=bs_page burst=200 nodelay;
+
+    if ($bs_access_refused) { return 403; }
+
+    include /etc/nginx/birdsong/headers-public.conf;
+    include /etc/nginx/birdsong/site.conf;
+    include /etc/nginx/conf.d/birdsong-api.inc;
 }

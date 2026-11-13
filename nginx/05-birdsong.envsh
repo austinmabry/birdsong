@@ -1,0 +1,21 @@
+#!/bin/sh
+# Sourced by the nginx image's entrypoint before the config templates are rendered.
+# Anything wrong here stops the container with a message, rather than starting it half-configured.
+
+# A trailing slash on BIRDNET_URL would make nginx drop the /api prefix; remove it.
+BIRDNET_URL="${BIRDNET_URL%/}"
+# BIRDNET_URL is written into nginx's config, so take only a plain address:
+# http:// or https://, a host name or IP address, and an optional port. Nothing else.
+if ! printf '%s' "$BIRDNET_URL" | grep -Eq '^https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$'; then
+    echo "birdsong: BIRDNET_URL should look like http://192.168.1.50:8080 (http:// or https://, an address, an optional port and nothing more), not: $BIRDNET_URL" >&2
+    exit 1
+fi
+export BIRDNET_URL
+
+# The internet door (port 8081, used by a Cloudflare Tunnel) refuses requests that did not
+# come through Cloudflare Access, unless REQUIRE_CLOUDFLARE_ACCESS is false.
+case "$(printf '%s' "${REQUIRE_CLOUDFLARE_ACCESS:-true}" | tr 'A-Z' 'a-z')" in
+    false|0|no|off) BS_REQUIRE_ACCESS=0 ;;
+    *)              BS_REQUIRE_ACCESS=1 ;;
+esac
+export BS_REQUIRE_ACCESS

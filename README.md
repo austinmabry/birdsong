@@ -58,7 +58,9 @@ your BirdNET-Go as the container can reach it: use the server's IP, not
 - **Preview without a station:** open `/?demo` for a sample plate.
 
 If BirdNET-Go has a password or private mode switched on, allow this
-container's address in BirdNET-Go's security settings. Recordings and
+container's address in BirdNET-Go's security settings. That is safe: Birdsong
+passes on only the handful of read-only calls the page makes, never
+BirdNET-Go's settings, sign-in, deleting or restarting. Recordings and
 spectrograms appear only if BirdNET-Go keeps audio clips, and weather
 only if it has a weather provider switched on.
 
@@ -72,6 +74,19 @@ Birdsong address, for example `http://192.168.1.50:8095`. One-screen mode
 If you open Home Assistant over HTTPS, the browser will refuse to embed a
 plain-HTTP page inside it: serve Birdsong through your reverse proxy with
 HTTPS and use that address in the card instead.
+
+## Watch from anywhere: Cloudflare Tunnel
+
+To show Birdsong to family elsewhere (on their TV, say) at an HTTPS address
+such as `https://birds.example.com`, with nothing opened on your router and a
+sign-in that admits only the email addresses you list:
+
+    cp .env.example .env && chmod 600 .env     # add your tunnel token and BirdNET-Go address
+    docker compose -f docker-compose.tunnel.yml up -d --build
+
+The step-by-step guide, including the Cloudflare side, is in
+[docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md). See [Security](#security)
+for what protects it.
 
 ## HTTPS with Tailscale
 
@@ -98,9 +113,10 @@ reverse proxy such as Nginx Proxy Manager with its own certificate.
 
 ## What is inside the image
 
-- The page (`html/index.html`, plain HTML with no build step) and nginx,
-  which also forwards `/api` to BirdNET-Go so the page and the data share
-  one address.
+- The page (`html/index.html`, with its script in `html/app.js` and styles
+  in `html/app.css`; plain files, no build step) and nginx, which also
+  forwards the page's read-only `/api` calls to BirdNET-Go so the page and
+  the data share one address.
 - About 1,400 bird cut-outs covering some 800 species, from the
   [Fugleramme](https://github.com/arnegiacomo/fugleramme) project,
   fetched when the image is built.
@@ -131,7 +147,51 @@ per browser, not shared between devices.
     docker build --build-arg FUGLERAMME_REF=v0.21.3 -t birdsong .   # pin the artwork
 
 To pin a species to an illustration of your choice for everyone, add it
-to `CURATED_RAW` near the top of the script in `html/index.html`.
+to `CURATED_RAW` near the top of `html/app.js`.
+
+`tests/smoke-test.sh` checks a built image's security: it runs it read-only
+beside a stand-in for BirdNET-Go and tries about ninety requests against both
+doors, from the page's own calls to path tricks aimed at BirdNET-Go's
+settings. It runs on every push.
+
+    docker build -t birdsong:test . && tests/smoke-test.sh birdsong:test
+
+## Security
+
+Birdsong has two doors into the same page:
+
+- **Port 80, the LAN door**, as it always was: for home, Home Assistant and
+  Tailscale.
+- **Port 8081, the internet door**, for a Cloudflare Tunnel only, and never
+  published on the host. It refuses any request that has not come through
+  Cloudflare Access (unless `REQUIRE_CLOUDFLARE_ACCESS=false`), limits each
+  visitor's request rate, logs who signed in, and adds HSTS and a stricter
+  Content-Security-Policy that names the only outside sites the page uses
+  (Wikipedia and Wikimedia Commons).
+
+On both doors:
+
+- Only `GET` and `HEAD`, and only the page, its artwork and fonts, and eight
+  read-only BirdNET-Go calls. Everything else under `/api` is refused,
+  paths with encoded slashes or dots included, so nothing can be steered to
+  BirdNET-Go's settings, sign-in, deleting or restarting.
+- No cookies, sign-in tokens or forwarded addresses are passed to
+  BirdNET-Go, and nothing it sends can set cookies, open the data to other
+  sites or show its internal error messages.
+- A Content-Security-Policy that allows no inline or outside scripts, plus
+  `nosniff`, no referrer, and no version number in the server header.
+- The page's BirdNET-Go address comes only from its own Station settings,
+  never from the link that opened it, and it follows only `http(s)` links.
+
+`docker-compose.tunnel.yml` also runs both containers read-only, with every
+Linux capability dropped except the four nginx needs to start, no privilege
+escalation, cloudflared as a non-root user, memory, CPU and process limits,
+and cloudflared and Birdsong on a private network with no way out. The
+[tunnel guide](docs/cloudflare-tunnel.md#every-layer-and-what-it-stops) has
+the full list and what each layer stops.
+
+Found a security problem? Please report it privately to the repository owner
+rather than in a public issue.
 
 ## Credits and licences
 

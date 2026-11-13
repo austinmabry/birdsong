@@ -1,0 +1,19 @@
+name: Security tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t birdsong:test .
+      - name: Run the security smoke test
+        run: tests/smoke-test.sh birdsong:test

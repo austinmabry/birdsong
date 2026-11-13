@@ -1,0 +1,48 @@
+# The BirdNET-Go calls the page makes, and nothing else: every one a read-only GET.
+# BirdNET-Go has hundreds of other routes (settings, deleting detections, restarting,
+# signing in). Since BirdNET-Go is told to trust this container's address, any route
+# forwarded here would be open to whoever can reach Birdsong, so none of them are.
+# Rendered at container start; ${BIRDNET_URL} comes from the environment.
+
+location = /api/v2/analytics/species/summary {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+location = /api/v2/analytics/species/daily {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+location = /api/v2/analytics/time/daily {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+location = /api/v2/analytics/time/distribution/hourly {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+location = /api/v2/species {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+# The latest recordings of one species; the page asks for four.
+location = /api/v2/detections {
+    if ($arg_numResults !~ "^[0-9]{1,2}$") { return 400; }
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+# A recording and its spectrogram, by detection number.
+location ~ "^/api/v2/spectrogram/[0-9]{1,19}$" {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+location ~ "^/api/v2/audio/[0-9]{1,19}$" {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+# BirdNET-Go's photo of a species, by scientific name: used when no plate is found.
+location ~ "^/api/v2/media/image/[A-Za-z][A-Za-z -]{0,100}$" {
+    include /etc/nginx/birdsong/proxy.conf;
+    proxy_pass ${BIRDNET_URL};
+}
+
+location /api/ { return 404; }

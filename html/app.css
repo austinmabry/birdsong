@@ -1,0 +1,141 @@
+/* IM Fell English, by Igino Marini, SIL Open Font Licence (fonts/OFL.txt). Served from this container. */
+@font-face{font-family:"IM Fell English";src:url(fonts/IMFeENrm28P.ttf) format("truetype");font-style:normal;font-display:swap}
+@font-face{font-family:"IM Fell English";src:url(fonts/IMFeENit28P.ttf) format("truetype");font-style:italic;font-display:swap}
+@font-face{font-family:"IM Fell English SC";src:url(fonts/IMFeENsc28P.ttf) format("truetype");font-display:swap}
+:root{
+  --paper:#eee5ce;      /* matched to the scanned paper of the plates */
+  --paper-deep:#e3d7b8;
+  --ink:#2a241c;
+  --sepia:#6b5338;
+  --rule:#bcab86;
+  --madder:#8c3b2a;
+  --serif:"IM Fell English","Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --caps:"IM Fell English SC","IM Fell English","Iowan Old Style",Palatino,Georgia,serif;
+}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{
+  margin:0;min-height:100vh;color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.5;
+  background:
+    radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(120,95,50,.13) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .15 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    var(--paper);
+  background-attachment:fixed;
+}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--madder);outline-offset:3px}
+svg.defs{position:absolute}   /* holds the paper-tint filter; takes no space */
+
+/* ---------- heading ---------- */
+header{display:grid;grid-template-columns:1fr auto 1fr;gap:.2rem 2rem;align-items:start;padding:1rem clamp(1rem,4vw,3rem) 0}
+h1{font-weight:400;font-size:clamp(1.6rem,2.6vw,2.2rem);line-height:1.05;margin:0;letter-spacing:-.005em}
+#sub{font-style:italic;color:var(--sepia);margin:.2rem 0 0;font-size:.95rem}
+#plateno{font-family:var(--caps);font-size:1.05rem;letter-spacing:.08em;color:var(--sepia);text-align:right;white-space:nowrap;padding-top:.3rem;grid-column:3;grid-row:1}
+#plateno button{display:block;margin-left:auto;font-family:var(--serif);font-style:italic;font-size:.9rem;letter-spacing:0;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+nav{grid-column:2;grid-row:1;display:flex;flex-wrap:wrap;justify-content:center;gap:.2rem 1.6rem;padding-top:.45rem}
+nav button{font-size:1rem;color:var(--sepia);padding:.1rem 0}
+nav button[aria-pressed="true"]{color:var(--madder);font-style:italic}
+nav button:hover{color:var(--ink)}
+#notice{grid-column:1/-1;margin:.2rem 0 0;font-size:.95rem;color:var(--madder)}
+#notice button{text-decoration:underline;text-underline-offset:3px}
+#notice:empty{display:none}
+
+/* ---------- the plate ---------- */
+#plate{position:relative;margin:.6rem clamp(.5rem,2vw,2rem) 0;height:calc(100vh - 8.5rem);min-height:420px}
+.bird{position:absolute;left:0;top:0;display:block;transition:transform .7s cubic-bezier(.2,.7,.2,1),width .7s,height .7s,opacity .9s;opacity:0}
+.bird.in{opacity:1}
+.bird.ink>img{filter:url(#paperTint)}   /* tints the cut-out by the paper colour, as the detail card does, so its pale edge melts into the page */
+.bird>canvas,.bird>img,.bird>span{display:block;width:100%;height:100%;transition:transform .25s ease-out;transform-origin:50% 60%}
+.bird:hover,.bird:focus-visible{z-index:5}
+.bird:hover>*,.bird:focus-visible>*{transform:scale(1.06)}
+.bird>img{object-fit:contain}
+.bird>span{display:grid;place-items:center;text-align:center;font-style:italic;font-size:clamp(.6rem,1.1vw,.9rem);line-height:1.15;color:var(--sepia);border:1px solid var(--rule);border-radius:50%;padding:.2em .6em}
+#status{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-style:italic;color:var(--sepia);font-size:1.15rem;padding:2rem;pointer-events:none}
+#status:empty{display:none}
+#status button{pointer-events:auto;text-decoration:underline;text-underline-offset:3px;font-style:italic}
+
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--paper);border:1px solid var(--rule);box-shadow:0 0 0 3px var(--paper),0 0 0 4px var(--rule),0 6px 18px rgba(60,40,10,.18);padding:.45rem .8rem .5rem;text-align:center;line-height:1.25;opacity:0;transition:opacity .12s;max-width:16rem}
+#tip.on{opacity:1}
+#tip b{font-weight:400;font-size:1.05rem;display:block}
+#tip i{color:var(--sepia);font-size:.9rem;display:block}
+#tip span{color:var(--madder);font-size:.9rem}
+
+/* ---------- caption and index ---------- */
+#caption{text-align:center;font-style:italic;color:var(--sepia);font-size:.98rem;margin:.6rem auto 0;padding:0 1rem;max-width:44rem}
+section{padding:2.2rem clamp(1rem,4vw,3rem) 2.5rem;max-width:78rem;margin:0 auto}
+h2{font-family:var(--caps);font-weight:400;font-size:1.25rem;letter-spacing:.06em;text-align:center;margin:0 0 1rem}
+h2::before,h2::after{content:"";display:inline-block;width:3.5rem;height:1px;background:var(--rule);vertical-align:middle;margin:0 .9rem}
+#index{columns:16rem;column-gap:2.6rem;list-style:none;margin:0;padding:0}
+#index li{break-inside:avoid}
+#index button{display:flex;align-items:baseline;width:100%;text-align:left;padding:.08rem 0;gap:.4rem}
+#index button::after{content:"";order:1;flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-.25em)}
+#index .n{order:2;color:var(--madder);font-variant-numeric:oldstyle-nums}
+#index button:hover .c{text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+#index .x{font-style:italic;color:var(--sepia);font-size:.85rem}
+
+/* ---------- one-screen mode: the plate shrinks so the index fits beneath it without scrolling ---------- */
+body.fit #plate{min-height:0;aspect-ratio:auto}
+body.fit #caption{display:none}
+body.fit section{padding:.5rem clamp(1rem,3vw,2rem) .8rem;max-width:none}
+body.fit h2{font-size:1rem;margin-bottom:.3rem}
+body.fit #index{columns:11rem;column-gap:1.6rem;font-size:.84rem;line-height:1.35}
+#settings .check{display:flex;gap:.6rem;align-items:baseline;font-style:normal;color:var(--ink);margin:0 0 .2rem}
+#settings .check input{width:auto}
+
+/* ---------- dialogs ---------- */
+dialog{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--sepia);outline:1px solid var(--rule);outline-offset:-7px;padding:1.8rem;max-width:min(60rem,94vw);max-height:92vh;overflow:auto}
+dialog::backdrop{background:rgba(42,36,28,.55)}
+.close{position:absolute;top:.9rem;right:1.1rem;font-style:italic;color:var(--sepia);text-decoration:underline;text-underline-offset:3px;font-size:.95rem}
+#card{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:2rem}
+#card figure{margin:0}
+#card figure img{display:block;width:100%;max-height:52vh;object-fit:contain;mix-blend-mode:multiply}
+#card figure img.ink{mix-blend-mode:normal;filter:url(#paperTint)}   /* same paper tint as the main plate; holds up when the card scrolls */
+#dRecWrap{margin-top:1.2rem}
+#card figcaption{font-size:.82rem;color:var(--sepia);margin-top:.5rem;line-height:1.35}
+#card h3{font-weight:400;font-size:2rem;line-height:1.1;margin:.6rem 0 0}
+#card .sci{font-style:italic;color:var(--sepia);font-size:1.15rem;margin:.15rem 0 1rem}
+dl{display:grid;grid-template-columns:auto 1fr;gap:.15rem 1.2rem;margin:0 0 1.2rem;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:.6rem 0}
+dt{color:var(--sepia);font-style:italic}
+dd{margin:0}
+dd.big{color:var(--madder);font-size:1.3rem;line-height:1.2}
+.bars{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;align-items:end;height:4.2rem;border-bottom:1px solid var(--sepia)}
+.bars i{display:block;background:repeating-linear-gradient(135deg,var(--sepia) 0 1px,transparent 1px 3px);border-top:1px solid var(--sepia);min-height:0}
+.barlab{display:flex;justify-content:space-between;font-size:.8rem;color:var(--sepia);margin-bottom:1.1rem}
+#dBlurb{margin:-.4rem 0 1rem;line-height:1.4}
+#dBlurb:empty{display:none}
+#dBlurb a{font-style:italic;font-size:.85rem;color:var(--sepia);white-space:nowrap}
+#dNotes{margin:-.5rem 0 1.1rem;font-style:italic;color:var(--madder)}
+#dNotes:empty{display:none}
+#recs{list-style:none;margin:0 0 1.1rem;padding:0;border-top:1px solid var(--rule)}
+#recs li{display:flex;align-items:baseline;gap:.8rem;border-bottom:1px solid var(--rule);padding:.3rem 0;font-size:.95rem}
+#recs .w{flex:1;color:var(--sepia);font-style:italic;text-align:right}
+#recs button{font-style:italic;color:var(--madder);text-decoration:underline;text-underline-offset:3px;min-width:2.6rem;text-align:left}
+#spec{display:block;width:100%;height:5.5rem;object-fit:fill;margin:0 0 .3rem;border:1px solid var(--sepia);filter:grayscale(1) sepia(.7) contrast(1.15)}
+[hidden]{display:none!important}
+.small{font-size:.92rem;color:var(--sepia);font-style:italic;margin:0 0 .4rem}
+#alts{display:flex;flex-wrap:wrap;gap:.5rem}
+#alts button{width:4.4rem;height:5.6rem;border:1px solid var(--rule);background:var(--paper-deep);padding:2px}
+#alts button[aria-pressed="true"]{border-color:var(--madder);box-shadow:0 0 0 1px var(--madder)}
+#alts img{width:100%;height:100%;object-fit:contain;display:block}
+#settings{width:min(40rem,94vw)}
+#settings h4{font-family:var(--caps);font-weight:400;font-size:1.05rem;letter-spacing:.06em;margin:1.6rem 0 .3rem;padding-top:1rem;border-top:1px solid var(--rule)}
+#settings .credits{margin:0;line-height:1.45}
+#settings h3{font-weight:400;font-size:1.6rem;margin:0 0 .8rem}
+#settings label{display:block;font-style:italic;color:var(--sepia);margin-bottom:.25rem}
+#settings input{font:inherit;width:100%;padding:.4rem .6rem;border:1px solid var(--sepia);background:#f6efdc;color:var(--ink)}
+#settings p{font-size:.92rem;color:var(--sepia);margin:.5rem 0 1.1rem}
+.btn{border:1px solid var(--ink);padding:.35rem 1.1rem;margin-right:.6rem}
+.btn:hover{background:var(--ink);color:var(--paper)}
+
+@media (max-width:720px){
+  body{font-size:16px}
+  header{grid-template-columns:1fr}
+  nav{grid-column:1;grid-row:auto;justify-content:flex-start}
+  #plateno{text-align:left;padding-top:0;grid-column:1;grid-row:auto}
+  #plateno button{margin-left:0}
+  #plate{height:auto;min-height:0;aspect-ratio:3/4}
+  #card{grid-template-columns:1fr;gap:1rem}
+  #card figure img{max-height:45vh}
+}
+@media (prefers-reduced-motion:reduce){.bird,.bird>*{transition:none}}

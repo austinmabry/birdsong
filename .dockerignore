@@ -4,3 +4,7 @@ unraid
 README.md
 docker-compose.yml
 docs
+.env
+.env.*
+tests
+docker-compose.tunnel.yml

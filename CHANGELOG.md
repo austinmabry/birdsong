@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Watch from anywhere, safely
+- Cloudflare Tunnel support: `docker-compose.tunnel.yml` runs Birdsong with
+  cloudflared, so it can be served at an HTTPS address with no ports opened
+  on the router, behind a Cloudflare Access sign-in. Step-by-step guide in
+  `docs/cloudflare-tunnel.md`; settings in `.env.example`.
+- A second, internet-facing door on port 8081 for the tunnel: refuses
+  requests that did not come through Cloudflare Access (setting:
+  `REQUIRE_CLOUDFLARE_ACCESS`), rate-limits each visitor, logs who signed
+  in, and sends HSTS and a stricter Content-Security-Policy.
+- Both containers run read-only with capabilities dropped, no privilege
+  escalation and resource limits, on networks that keep cloudflared away
+  from the LAN.
+
+### Security
+- Fixed: `/api` forwarded every request to BirdNET-Go, including its
+  settings, sign-in, deleting and restarting, and BirdNET-Go is told to
+  trust this container. Only the eight read-only calls the page makes are
+  now passed on, and only as `GET` with plain paths.
+- No longer passed to BirdNET-Go: cookies, `Authorization`, Cloudflare's
+  sign-in token, and `X-Forwarded-For` / `X-Real-IP` (which a visitor
+  could set to pose as a LAN address). BirdNET-Go's cookies, CORS headers
+  and error details are no longer passed back.
+- The page's script and styles moved to `html/app.js` and `html/app.css`,
+  so a Content-Security-Policy can forbid inline scripts entirely. Security
+  headers on every response; `GET` and `HEAD` only; no server version.
+- Removed the undocumented `?server=` link parameter, which let a link
+  point the page at any server. The address now comes only from Station
+  settings. Links on cards are followed only if they are `http(s)`.
+- A malformed `BIRDNET_URL` now stops the container with a message instead
+  of being written into nginx's config.
+- `tests/smoke-test.sh`, run on every push, checks all of the above.
+
+### Screens left on
+- When BirdNET-Go cannot be reached as the page opens, it now keeps trying
+  every minute and recovers by itself, instead of staying on the sample.
+- Behind a sign-in such as Cloudflare Access, the page reloads to the
+  sign-in when it lapses, instead of quietly going out of date.
+
+### Fixes
 - Fixed: the container failed to start with Unraid's per-container
   Tailscale enabled (`nginx: invalid option: "off"`).
 - Fixed: a trailing slash on `BIRDNET_URL` is now removed as intended
