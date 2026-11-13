@@ -18,7 +18,7 @@ TMP="$(mktemp -d)"
 FAILS=0 PASSES=0
 
 cleanup() {
-    docker rm -f "$RUN-mock" "$RUN-app" "$RUN-open" "$RUN-bad" "$RUN-ips" "$RUN-both" >/dev/null 2>&1
+    docker rm -f "$RUN-mock" "$RUN-bwmock" "$RUN-app" "$RUN-open" "$RUN-bad" "$RUN-ips" "$RUN-both" "$RUN-bw" >/dev/null 2>&1
     docker network rm "$NET" >/dev/null 2>&1
     rm -rf "$TMP"
 }
@@ -68,6 +68,9 @@ HARDENED=(--read-only
 docker network create "$NET" >/dev/null
 docker run -d --name "$RUN-mock" --network "$NET" --network-alias birdnet \
     -v "$HERE/mock-birdnet-go.conf:/etc/nginx/conf.d/default.conf:ro" "$MOCK_IMAGE" >/dev/null
+docker run -d --name "$RUN-bwmock" --network "$NET" --network-alias bwmock \
+    -v "$HERE/mock-birdweather.conf:/etc/nginx/nginx.conf:ro" -v "$HERE/mock-birdweather.js:/etc/nginx/mock-birdweather.js:ro" \
+    "$MOCK_IMAGE" >/dev/null
 docker run -d --name "$RUN-app" --network "$NET" "${HARDENED[@]}" \
     -e BIRDNET_URL=http://birdnet:8080/ \
     -p 127.0.0.1::80 -p 127.0.0.1::8081 "$IMAGE" >/dev/null
@@ -279,6 +282,62 @@ expect_code "the LAN door is unaffected by the list" 200 "$IPS_LAN" /
 expect_code "both: listed home, no sign-in" 200 "$BOTH" / -H "CF-Connecting-IP: 203.0.113.7"
 expect_code "both: elsewhere with a sign-in" 200 "$BOTH" / -H "CF-Connecting-IP: 198.51.100.9" -H "Cf-Access-Jwt-Assertion: x"
 expect_code "both: elsewhere without a sign-in" 403 "$BOTH" / -H "CF-Connecting-IP: 198.51.100.9"
+
+echo "BirdWeather station"
+# Only a BirdWeather station (no BIRDNET_URL), with its API pointed at the stand-in.
+docker run -d --name "$RUN-bw" --network "$NET" "${HARDENED[@]}" -e BIRDNET_URL= \
+    -e BIRDWEATHER_STATION=https://app.birdweather.com/stations/12345 -e BIRDWEATHER_API_URL=http://bwmock:8090 \
+    -p 127.0.0.1::80 -p 127.0.0.1::8081 "$IMAGE" >/dev/null
+sleep 3
+BW=$(docker port "$RUN-bw" 80/tcp | head -1 | sed 's/.*://')
+BW_NET=$(docker port "$RUN-bw" 8081/tcp | head -1 | sed 's/.*://')
+if [ -z "$BW" ]; then fail "BirdWeather-only container starts" "$(docker logs "$RUN-bw" 2>&1 | tail -3)"; else pass "starts with only a BirdWeather station"; fi
+expect_code "source.json names the station" 200 "$BW" /source.json
+body_has "station number taken from the whole address" '"birdweatherStation":"12345","birdweather":"1"'
+expect_code "station question" 200 "$BW" "/bw/station?station=12345" \
+    -H "Cookie: session=abc" -H "Authorization: Bearer abc" -H "X-Forwarded-For: 192.168.1.10"
+body_has "sent to BirdWeather as a POST" '"method":"POST"'
+body_has "as JSON" '"contentType":"application/json"'
+body_has "Birdsong's own fixed question" 'station(id:$id){earliestDetectionAt}'
+body_has "with the station number filled in" '"variables":{"id":"12345"}'
+body_has "addressed to BirdWeather's host" '"host":"bwmock"'
+body_has "no cookie passed on" '"cookie":""'
+body_has "no Authorization passed on" '"authorization":""'
+body_has "no forwarded address passed on" '"xff":""'
+body_has "Birdsong names itself" '"ua":"Birdsong"'
+header_is "BirdWeather answers are not cached" Cache-Control "private, no-store"
+expect_code "time zone question" 200 "$BW" "/bw/timezone?station=12345"
+expect_code "time zone refused by BirdWeather still answers" 200 "$BW" "/bw/timezone?station=7"
+body_has "with BirdWeather's error for the page to handle" "non-nullable field Station.timezone"
+expect_code "top species" 200 "$BW" "/bw/top-species?station=12345&from=2026-11-07&to=2026-11-14"
+body_has "with the period filled in" '"p":{"from":"2026-11-07","to":"2026-11-14"}'
+expect_code "hourly" 200 "$BW" "/bw/hourly?station=12345&species=5&from=2026-11-07&to=2026-11-14"
+expect_code "daily" 200 "$BW" "/bw/daily?station=12345&species=5&from=2026-01-22&to=2026-11-14"
+expect_code "recordings" 200 "$BW" "/bw/recordings?station=12345&species=5&from=2026-11-07&to=2026-11-14&since=2026-01-22"
+body_has "both periods filled in" '"all":{"from":"2026-01-22","to":"2026-11-14"}'
+expect_code "unknown station" 404 "$BW" "/bw/station?station=404"
+body_lacks "BirdWeather's own error page hidden" "Page Not Found"
+blocked "extra parameter" "$BW" "/bw/station?station=12345&x=1"
+blocked "quote smuggled into the station" "$BW" '/bw/station?station=1%22%7D'
+blocked "parameters out of order" "$BW" "/bw/top-species?station=12345&to=2026-11-14&from=2026-11-07"
+blocked "malformed date" "$BW" "/bw/top-species?station=12345&from=2026-1-7&to=2026-11-14"
+blocked "unknown question" "$BW" "/bw/anything?station=12345"
+blocked "POST" "$BW" "/bw/station?station=12345" -X POST -d '{"query":"mutation{x}"}'
+blocked "no open GraphQL pass-through" "$BW" /graphql -X POST -d '{"query":"{x}"}'
+expect_code "internet door: refused without Cloudflare Access" 403 "$BW_NET" "/bw/station?station=12345"
+expect_code "internet door: through Cloudflare Access" 200 "$BW_NET" "/bw/station?station=12345" "${CF[@]}"
+header_has "internet door allows BirdWeather's pictures and recordings" Content-Security-Policy "media-src 'self' https://media.birdweather.com"
+expect_code "without a station, source.json says BirdWeather is off" 200 "$LAN" /source.json
+body_has "birdweather off" '"birdweatherStation":"","birdweather":"0"'
+blocked "without a station, no BirdWeather questions at all" "$LAN" "/bw/station?station=12345"
+docker rm -f "$RUN-bad" >/dev/null 2>&1
+docker run --name "$RUN-bad" -e "BIRDWEATHER_STATION=12345; rm" "$IMAGE" >/dev/null 2>&1
+docker logs "$RUN-bad" >"$TMP/badlog" 2>&1
+if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "BIRDWEATHER_STATION should be" "$TMP/badlog"; then
+    pass "a malformed BIRDWEATHER_STATION stops the container"
+else
+    fail "malformed BIRDWEATHER_STATION" "$(tail -3 "$TMP/badlog")"
+fi
 
 echo
 echo "$PASSES passed, $FAILS failed"

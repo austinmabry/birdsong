@@ -5,7 +5,9 @@
 Birdsong draws the birds your [BirdNET-Go](https://github.com/tphakala/birdnet-go)
 station has heard as a single plate of hand-cut 1800s illustrations, each
 bird sized by how often it called. It is one small Docker container with
-one setting.
+one setting. It can also draw from a public
+[BirdWeather](https://app.birdweather.com) station, such as a PUC, with no
+BirdNET-Go at all.
 
 Created by [Ed Stone](https://ed-stone.co.uk). Current version: 0.42
 ([changelog](CHANGELOG.md)); images are also tagged by version, e.g. `:0.42`.
@@ -79,6 +81,40 @@ If you open Home Assistant over HTTPS, the browser will refuse to embed a
 plain-HTTP page inside it: serve Birdsong through your reverse proxy with
 HTTPS and use that address in the card instead.
 
+## From a BirdWeather station
+
+A BirdWeather PUC uploads what it hears to BirdWeather rather than running
+BirdNET-Go. To draw its plate, give the station's number instead of
+`BIRDNET_URL`: the number at the end of the station's page,
+`https://app.birdweather.com/stations/12345` (the whole address works too).
+
+    docker run -d --name birdsong --restart unless-stopped \
+      -p 8095:80 \
+      -e BIRDWEATHER_STATION=12345 \
+      ghcr.io/dopeytree/birdsong:latest
+
+The station must be public; no token is needed. Birdsong asks BirdWeather's
+public API itself, so the page and its data still share one address. It asks
+only a fixed set of questions, filling in nothing but the station and species
+numbers and the dates, and checks BirdWeather's certificate. Any BirdWeather
+station works, not only a PUC; with the container set up for BirdWeather, a
+different station can also be chosen per browser under Station settings.
+
+BirdWeather has less to say about each bird than BirdNET-Go does. The
+plate, the index, calls each day, last heard, how long the species has
+been known at the station, and the latest recordings with playback (just
+the call, with a second either side) all work. Some things differ:
+
+- **First heard** is a date rather than a time: BirdWeather lists
+  detections newest first and can't be asked for the oldest.
+- **Calls by hour** covers today or the last seven days. BirdWeather only
+  groups by the hour over about a week, so for thirty days and since
+  records began the chart shows the last seven days, and says so. For a
+  station with no time zone set, the hours are in the viewer's time zone.
+- Family, order, how common the bird is at this season, surest
+  identification, the new-to-the-station notes, weather at the time and
+  spectrograms are left off the card; BirdWeather doesn't provide them.
+
 ## Watch from anywhere: Cloudflare Tunnel
 
 To show Birdsong to family elsewhere (on their TV, say) at an HTTPS address
@@ -122,8 +158,9 @@ reverse proxy such as Nginx Proxy Manager with its own certificate.
 
 - The page (`html/index.html`, with its script in `html/app.js` and styles
   in `html/app.css`; plain files, no build step) and nginx, which also
-  forwards the page's read-only `/api` calls to BirdNET-Go so the page and
-  the data share one address.
+  forwards the page's read-only `/api` calls to BirdNET-Go (or asks
+  BirdWeather, when `BIRDWEATHER_STATION` is set) so the page and the data
+  share one address.
 - About 1,400 bird cut-outs covering some 800 species, from the
   [Fugleramme](https://github.com/arnegiacomo/fugleramme) project,
   fetched when the image is built.
@@ -136,15 +173,19 @@ arrives: update the container as you would any other.
 
 - A bird with no Fugleramme cut-out falls back to an old plate from
   Wikimedia Commons, cut off its page in the browser. Failing that it
-  uses BirdNET-Go's own photo, or just the bird's name.
+  uses BirdNET-Go's (or BirdWeather's) own photo, or just the bird's name.
 - The description on each card comes from Wikipedia.
 
-Both are skipped quietly when offline. Everything else is local.
+Both are skipped quietly when offline. Everything else is local, unless
+the plate is drawn from a BirdWeather station, whose detections, pictures
+and recordings come from BirdWeather.
 
 ## Settings
 
 "Station settings" on the page holds one-screen mode, an optional
-BirdNET-Go address override, and the credits. These settings, the last
+BirdNET-Go address override, an optional BirdWeather station (which takes
+precedence over both BirdNET-Go and the container's station, when the
+container is set up for BirdWeather), and the credits. These settings, the last
 period chosen, and any illustration you pick for a bird are remembered
 per browser, not shared between devices.
 
@@ -194,6 +235,10 @@ On both doors:
   never from the link that opened it, and it follows only `http(s)` links.
 - Only the artwork's own kinds of file are served from `/art/`, and never
   through a symbolic link.
+- BirdWeather, only when `BIRDWEATHER_STATION` is set: six fixed questions
+  under `/bw/`, each taking only digits and dates, sent by Birdsong itself
+  with BirdWeather's certificate checked. There is no general way through
+  to BirdWeather's API.
 
 `docker-compose.tunnel.yml` also runs both containers read-only, with every
 Linux capability dropped except the four nginx needs to start, no privilege
@@ -221,3 +266,5 @@ rather than in a public issue.
   (`html/fonts/OFL.txt`).
 - BirdNET-Go is a separate project (CC BY-NC-SA 4.0, non-commercial) and
   is not included.
+- BirdWeather is a separate service; detections are read from its public
+  API only when a station is given.

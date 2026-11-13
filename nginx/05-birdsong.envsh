@@ -2,6 +2,49 @@
 # Sourced by the nginx image's entrypoint before the config templates are rendered.
 # Anything wrong here stops the container with a message, rather than starting it half-configured.
 
+# ---- BirdWeather station (optional) ----
+# BIRDWEATHER_STATION: the number at the end of a public station's page,
+# https://app.birdweather.com/stations/12345 (the whole address works too). When set, the page
+# reads that station from BirdWeather instead of BirdNET-Go (birdsong-birdweather.inc).
+BS_BW_STATION=$(printf '%s' "${BIRDWEATHER_STATION:-}" | tr -d '[:space:]' | sed -E 's#^.*/stations/([0-9]+).*$#\1#')
+case "$BS_BW_STATION" in
+    '') BS_BW_ENABLED=0 ;;
+    *[!0-9]*|???????????*)
+        echo "birdsong: BIRDWEATHER_STATION should be the station's number, e.g. 12345 (from app.birdweather.com/stations/12345), not: $BIRDWEATHER_STATION" >&2
+        exit 1 ;;
+    *)  BS_BW_ENABLED=1 ;;
+esac
+# BirdWeather's API. Changed only by the tests, which point it at a stand-in.
+BS_BW_API="${BIRDWEATHER_API_URL:-https://app.birdweather.com}"
+BS_BW_API="${BS_BW_API%/}"
+case "$BS_BW_API" in
+    *[!]A-Za-z0-9:/.[-]*) bs_api_ok=no ;;
+    *)                    bs_api_ok=yes ;;
+esac
+if [ "$bs_api_ok" != yes ] || ! printf '%s' "$BS_BW_API" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$'; then
+    echo "birdsong: BIRDWEATHER_API_URL should look like https://app.birdweather.com, not: $BS_BW_API" >&2
+    exit 1
+fi
+BS_BW_HOST="${BS_BW_API#*://}"; BS_BW_HOST="${BS_BW_HOST%%:*}"
+# The container's own DNS servers, for looking BirdWeather up when asked.
+BS_RESOLVER=$(awk '/^nameserver/ { a = $2; if (a ~ /:/) a = "[" a "]"; printf "%s ", a }' /etc/resolv.conf 2>/dev/null)
+case "$BS_RESOLVER" in *[!0-9A-Fa-f.:\[\]\ ]*) BS_RESOLVER="" ;; esac
+if [ -z "$BS_RESOLVER" ]; then
+    if [ "$BS_BW_ENABLED" = 1 ]; then echo "birdsong: no DNS server in /etc/resolv.conf, so BirdWeather cannot be reached" >&2; exit 1; fi
+    BS_RESOLVER=127.0.0.1
+fi
+export BS_BW_STATION BS_BW_ENABLED BS_BW_API BS_BW_HOST BS_RESOLVER
+
+# With only a BirdWeather station, BirdNET-Go is not used; point its unused default at a local
+# address so nginx need not look up a host that does not exist.
+if [ "$BS_BW_ENABLED" = 1 ] && { [ -z "${BIRDNET_URL:-}" ] || [ "$BIRDNET_URL" = "http://birdnet-go:8080" ]; }; then
+    BIRDNET_URL=http://127.0.0.1:9
+fi
+if [ -z "${BIRDNET_URL:-}" ]; then
+    echo "birdsong: set BIRDNET_URL (your BirdNET-Go, e.g. http://192.168.1.50:8080) or BIRDWEATHER_STATION (a BirdWeather station's number)" >&2
+    exit 1
+fi
+
 # A trailing slash on BIRDNET_URL would make nginx drop the /api prefix; remove it.
 BIRDNET_URL="${BIRDNET_URL%/}"
 # BIRDNET_URL is written into nginx's config, so take only a plain address:

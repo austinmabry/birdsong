@@ -76,13 +76,16 @@
     <label for="srv">Address of BirdNET-Go</label>
     <input id="srv" type="text" inputmode="url" placeholder="http://192.168.1.50:8080" autocomplete="off">
     <p>Leave empty to use the address given to the container as <code>BIRDNET_URL</code>.</p>
+    <label for="stn">Or a BirdWeather station</label>
+    <input id="stn" type="text" inputmode="numeric" placeholder="12345" autocomplete="off">
+    <p>The number at the end of a public station's page, <i>app.birdweather.com/stations/12345</i>. When filled in, this browser shows that station instead. Works when the container was given a station as <code>BIRDWEATHER_STATION</code>; leave empty to use that one.</p>
     <label class="check"><input type="checkbox" id="fitOpt"> Fit everything on one screen</label>
     <p>Shrinks the collage so the index of species sits beneath it with no scrolling.</p>
     <button class="btn" value="save">Save and reload</button>
     <button class="btn" value="sample" type="button" id="showSample">Show the sample plate</button>
   </form>
   <h4>Credits</h4>
-  <p class="credits">Birdsong v0.42. Created by <a href="https://ed-stone.co.uk" target="_blank" rel="noopener">Ed Stone</a>. Detections by BirdNET-Go. Bird cut-outs from the <a href="https://github.com/arnegiacomo/fugleramme">Fugleramme</a> project by Arne Giacomo, after Gould, the von Wright brothers, Audubon and others, used under CC BY-SA 4.0. Descriptions from Wikipedia, CC BY-SA. Further plates from <i>Nederlandsche Vogelen</i> (Nozeman &amp; Sepp, Amsterdam, 1770–1829), digitised by the Koninklijke Bibliotheek, with others from public-domain works held on Wikimedia Commons.</p>
+  <p class="credits">Birdsong v0.42. Created by <a href="https://ed-stone.co.uk" target="_blank" rel="noopener">Ed Stone</a>. Detections by <span id="srcName">BirdNET-Go</span>. Bird cut-outs from the <a href="https://github.com/arnegiacomo/fugleramme">Fugleramme</a> project by Arne Giacomo, after Gould, the von Wright brothers, Audubon and others, used under CC BY-SA 4.0. Descriptions from Wikipedia, CC BY-SA. Further plates from <i>Nederlandsche Vogelen</i> (Nozeman &amp; Sepp, Amsterdam, 1770–1829), digitised by the Koninklijke Bibliotheek, with others from public-domain works held on Wikimedia Commons.</p>
 </dialog>
 
 <script src="app.js"></script>

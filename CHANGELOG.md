@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### BirdWeather stations
+- New: draw the plate from a public BirdWeather station, such as a PUC,
+  instead of BirdNET-Go. Set `BIRDWEATHER_STATION` to the station's
+  number (or its whole address); with that set, a station can also be
+  chosen per browser under Station settings. The card shows what
+  BirdWeather offers: calls by hour and by day, first heard (as a date)
+  and last heard, days known at the station, and the latest recordings
+  with playback of just the call.
+- Birdsong asks BirdWeather itself, through six fixed questions under
+  `/bw/` that take only station and species numbers and dates, with
+  BirdWeather's certificate checked; there is no open way through to its
+  API, and the page still makes only GET requests. BirdWeather is looked
+  up when asked, so Birdsong starts even if DNS is briefly down.
+- Stations whose time zone was never set now work: BirdWeather refuses any
+  question that includes it, so it is asked separately and the hours fall
+  back to the viewer's time zone. An unknown station number says so.
+- Fixed: a first-heard date without a time no longer shows as the day
+  before for stations west of Greenwich.
+
 ### Watch from anywhere, safely
 - Cloudflare Tunnel support: `docker-compose.tunnel.yml` runs Birdsong with
   cloudflared, so it can be served at an HTTPS address with no ports opened

@@ -1,0 +1,95 @@
+# Drawing the plate from a public BirdWeather station (such as a PUC) instead of BirdNET-Go.
+# Only when BIRDWEATHER_STATION is set; otherwise /bw/ answers 404 and nothing goes to BirdWeather.
+#
+# The page never sends BirdWeather a query of its own. Each path below is one fixed question,
+# written out here, and the page supplies only the numbers and dates in it, each checked:
+# a station or species is digits, a date is 2026-11-13. So Birdsong cannot be used to ask
+# BirdWeather anything else, and the page still makes only GET requests.
+# Rendered at container start: the BS_* placeholders are filled in by 05-birdsong.envsh.
+
+# Which station the page should read, from BIRDWEATHER_STATION ("" when not set), and
+# whether BirdWeather is switched on at all ("1" or "0").
+location = /source.json {
+    default_type application/json;
+    return 200 '{"birdweatherStation":"${BS_BW_STATION}","birdweather":"${BS_BW_ENABLED}"}\n';
+}
+
+location /bw/ {
+    # BirdWeather's address is looked up when asked, so Birdsong starts even if DNS is down.
+    resolver ${BS_RESOLVER} valid=300s ipv6=off;
+    resolver_timeout 5s;
+
+    limit_req zone=bs_api burst=40 nodelay;
+
+    # Each question goes to BirdWeather as a POST built here; nothing from the visitor's
+    # request is passed on, not even its headers.
+    proxy_method POST;
+    proxy_pass_request_headers off;
+    proxy_pass_request_body off;
+    proxy_set_body $bs_bw_body;
+    proxy_http_version 1.1;
+    proxy_set_header Host ${BS_BW_HOST};
+    proxy_set_header Connection "";
+    proxy_set_header Content-Type "application/json";
+    proxy_set_header Accept "application/json";
+    proxy_set_header User-Agent "Birdsong";
+
+    # BirdWeather's certificate is checked: nothing in between can stand in for it.
+    proxy_ssl_server_name on;
+    proxy_ssl_name ${BS_BW_HOST};
+    proxy_ssl_verify on;
+    proxy_ssl_verify_depth 4;
+    proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+    proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 10s;
+    proxy_read_timeout 30s;
+    include /etc/nginx/birdsong/upstream-reply.conf;
+
+    # When the station's records begin.
+    location = /bw/station {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}id:ID!){station(id:${bs_d}id){earliestDetectionAt}}","variables":{"id":"$arg_station"}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+    # The station's time zone, asked separately: BirdWeather fails the whole question for a
+    # station whose time zone was never set, and the page manages without one.
+    location = /bw/timezone {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}id:ID!){station(id:${bs_d}id){timezone}}","variables":{"id":"$arg_station"}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+    # Every species heard in a period, with its count: the plate.
+    location = /bw/top-species {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}&from=[0-9]{4}-[0-9]{2}-[0-9]{2}&to=[0-9]{4}-[0-9]{2}-[0-9]{2}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}ids:[ID!],${bs_d}p:InputDuration){topSpecies(stationIds:${bs_d}ids,period:${bs_d}p,limit:500){count speciesId species{commonName scientificName thumbnailUrl}}}","variables":{"ids":["$arg_station"],"p":{"from":"$arg_from","to":"$arg_to"}}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+    # One species' calls by the hour.
+    location = /bw/hourly {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}&species=[0-9]{1,10}&from=[0-9]{4}-[0-9]{2}-[0-9]{2}&to=[0-9]{4}-[0-9]{2}-[0-9]{2}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}sp:ID,${bs_d}ids:[ID!],${bs_d}p:InputDuration){species(id:${bs_d}sp){detectionCounts(period:${bs_d}p,group:60,stationIds:${bs_d}ids){bins{key count}}}}","variables":{"sp":"$arg_species","ids":["$arg_station"],"p":{"from":"$arg_from","to":"$arg_to"}}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+    # One species' calls by the day.
+    location = /bw/daily {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}&species=[0-9]{1,10}&from=[0-9]{4}-[0-9]{2}-[0-9]{2}&to=[0-9]{4}-[0-9]{2}-[0-9]{2}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}ids:[ID!],${bs_d}sps:[ID!],${bs_d}p:InputDuration){dailyDetectionCounts(stationIds:${bs_d}ids,speciesIds:${bs_d}sps,period:${bs_d}p){date counts{speciesId count}}}","variables":{"ids":["$arg_station"],"sps":["$arg_species"],"p":{"from":"$arg_from","to":"$arg_to"}}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+    # One species' four latest recordings (since records began), and its latest call in the period.
+    location = /bw/recordings {
+        if ($bs_bw_off) { return 404; }
+        if ($args !~ "^station=[0-9]{1,10}&species=[0-9]{1,10}&from=[0-9]{4}-[0-9]{2}-[0-9]{2}&to=[0-9]{4}-[0-9]{2}-[0-9]{2}&since=[0-9]{4}-[0-9]{2}-[0-9]{2}$") { return 400; }
+        set $bs_bw_body '{"query":"query(${bs_d}ids:[ID!],${bs_d}sp:ID,${bs_d}p:InputDuration,${bs_d}all:InputDuration){recent:detections(stationIds:${bs_d}ids,speciesId:${bs_d}sp,period:${bs_d}all,first:4){nodes{id timestamp confidence soundscape{url startTime endTime}}}latest:detections(stationIds:${bs_d}ids,speciesId:${bs_d}sp,period:${bs_d}p,first:1){nodes{timestamp}}}","variables":{"ids":["$arg_station"],"sp":"$arg_species","p":{"from":"$arg_from","to":"$arg_to"},"all":{"from":"$arg_since","to":"$arg_to"}}}';
+        proxy_pass $bs_bw_api/graphql;
+    }
+
+    return 404;
+}

@@ -49,7 +49,8 @@ address (or `127.0.0.1`).
 - A domain name whose DNS is on Cloudflare. The free plan is enough. (If you have no domain,
   one costs around $10 a year from Cloudflare Registrar or elsewhere.)
 - The server where BirdNET-Go runs, or any machine at home that can reach it, with Docker
-  and Docker Compose. On Unraid, the *Docker Compose Manager* plugin runs compose files.
+  and Docker Compose. With a BirdWeather station (a PUC, say) instead of BirdNET-Go, any
+  machine with Docker will do. On Unraid, the *Docker Compose Manager* plugin runs compose files.
 - This repository on that machine: `git clone https://github.com/austinmabry/birdsong`.
 - Two-factor authentication on your Cloudflare account (**My Profile > Authentication**).
   Whoever controls the account controls who gets in, so this matters more than anything
@@ -140,7 +141,9 @@ What to know about this choice:
    ```
 
    Edit `.env`: set `BIRDNET_URL` to your BirdNET-Go address (for example
-   `http://192.168.1.50:8080`) and paste the token after `TUNNEL_TOKEN=`.
+   `http://192.168.1.50:8080`), or, for a BirdWeather station such as a PUC, leave
+   `BIRDNET_URL` empty and set `BIRDWEATHER_STATION` to the number at the end of the
+   station's page (`app.birdweather.com/stations/12345`). Paste the token after `TUNNEL_TOKEN=`.
 4. Start it:
 
    ```bash
@@ -179,7 +182,8 @@ right of the web interface).
    ```
 
    `BIRDNET_URL` is your Unraid server's IP and BirdNET-Go's port, e.g.
-   `http://192.168.1.10:8080`. If BirdNET-Go has its own IP address on `br0`, Birdsong can
+   `http://192.168.1.10:8080`; or, for a PUC or other BirdWeather station, leave it empty and
+   set `BIRDWEATHER_STATION` to the station's number. If BirdNET-Go has its own IP address on `br0`, Birdsong can
    only reach it with **Settings > Docker > Host access to custom networks** switched on
    (Advanced view; the Docker service must be stopped to change it).
 5. Build and start:
@@ -311,7 +315,7 @@ browser tab from a phone or laptop, works just as well.
 - **Recordings** can catch voices in the background. Anyone signed in can play recent
   recordings of each species, as at home. BirdNET-Go's privacy filter, which discards
   clips with human speech, is worth switching on.
-- **BirdNET-Go should treat Birdsong as a stranger.** Keep BirdNET-Go on your LAN only,
+- **BirdNET-Go should treat Birdsong as a stranger** (with BirdNET-Go only). Keep BirdNET-Go on your LAN only,
   with its own password on and **private mode off**, and do not add Birdsong (or the Docker
   host) to its trusted addresses. Everything Birdsong reads is what BirdNET-Go shows any
   visitor, so nothing is lost, and anything that somehow got past Birdsong's checks would
@@ -334,7 +338,8 @@ sudo iptables -I DOCKER-USER 1 -i bs-lan -d 192.168.1.50 -p tcp --dport 8080 -j 
 sudo iptables -I DOCKER-USER 1 -i bs-lan -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
 ```
 
-They apply to traffic leaving a container for another machine; they do not survive a
+If the plate comes from a BirdWeather station, leave out the two `bs-lan` rules: Birdsong then
+needs to reach BirdWeather on the internet. They apply to traffic leaving a container for another machine; they do not survive a
 reboot until saved the way your system does it (for example `netfilter-persistent save`,
 or a start-up script on Unraid). Check the page still loads afterwards. They do not
 apply when BirdNET-Go runs in a container on the same Docker network as Birdsong.
@@ -346,6 +351,7 @@ apply when BirdNET-Go runs in a container on the same Docker network as Birdsong
 | *Not available.* on a white page, for every visitor | The internet door saw no Access token: the Access application does not cover this address, or the route points at port 80. Check step 1's domain and step 3's `http://birdsong:8081`. |
 | A 403 or 502 error after signing in (not *Not available.*) | cloudflared turned the request away: *Protect with Access* has the wrong team name or AUD tag, or cloudflared cannot reach `<team>.cloudflareaccess.com` to check the token. |
 | The tunnel never turns Healthy | The token in `.env` is incomplete, or outgoing port 7844 is blocked; see `logs cloudflared`. |
+| "BirdWeather has no public station ..." | Check the number at the end of the station's page, and that the station is public on BirdWeather. |
 | The sample plate, "BirdNET-Go could not be reached" | `BIRDNET_URL` is wrong or unreachable from the container. Test from the server: `curl http://192.168.1.50:8080/api/v2/analytics/species/summary`. |
 | "BirdNET-Go asked for a sign-in" | BirdNET-Go's private mode is on. Switch it off (best), or see "BirdNET-Go should treat Birdsong as a stranger" above. |
 | The container stops at once, "BIRDNET_URL should look like..." | `BIRDNET_URL` must be just `http://address:port`, with no path. |

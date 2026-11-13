@@ -19,7 +19,7 @@ ENV BIRDNET_URL=http://birdnet-go:8080 \
     NGINX_ENVSUBST_FILTER="^(BIRDNET_URL|BS_[A-Z_]+)$"
 # The stock site would otherwise answer if the templates could not be rendered.
 RUN rm -f /etc/nginx/conf.d/default.conf
-COPY nginx/default.conf.template nginx/birdsong-api.inc.template /etc/nginx/templates/
+COPY nginx/default.conf.template nginx/birdsong-api.inc.template nginx/birdsong-birdweather.inc.template /etc/nginx/templates/
 COPY nginx/birdsong/ /etc/nginx/birdsong/
 COPY --chmod=755 nginx/05-birdsong.envsh /docker-entrypoint.d/05-birdsong.envsh
 COPY html/ /usr/share/nginx/html/

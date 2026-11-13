@@ -95,11 +95,21 @@ map $request_uri $bs_plain_api_path {
     default                                                                 0;
 }
 
+# ---- BirdWeather (birdsong-birdweather.inc) ----
+# $bs_d is a literal "$", for the GraphQL variables written into each fixed BirdWeather question.
+geo $bs_d { default "$"; }
+map "${BS_BW_ENABLED}" $bs_bw_off {
+    "1"     0;
+    default 1;
+}
+map $host $bs_bw_api { default "${BS_BW_API}"; }
+
 # ---- caching ----
 # One Cache-Control per path, sent with the security headers (add_header in a location
 # would silently drop those). BirdNET-Go's answers are never kept by Cloudflare or browsers.
 map $uri $bs_cache_control {
     "~^/api/"   "private, no-store";
+    "~^/bw/"    "private, no-store";
     "~^/art/"   "public, max-age=604800";
     "~^/fonts/" "public, max-age=2592000";
     default     "no-cache";
@@ -126,6 +136,7 @@ server {
     include /etc/nginx/birdsong/headers-lan.conf;
     include /etc/nginx/birdsong/site.conf;
     include /etc/nginx/conf.d/birdsong-api.inc;
+    include /etc/nginx/conf.d/birdsong-birdweather.inc;
 
     location = /healthz { access_log off; default_type text/plain; return 200 "ok\n"; }
 }
@@ -160,4 +171,5 @@ server {
     include /etc/nginx/birdsong/headers-public.conf;
     include /etc/nginx/birdsong/site.conf;
     include /etc/nginx/conf.d/birdsong-api.inc;
+    include /etc/nginx/conf.d/birdsong-birdweather.inc;
 }
