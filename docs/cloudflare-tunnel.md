@@ -100,6 +100,55 @@ Do this before the tunnel exists, so there is never a moment when the page is op
    docker compose -f docker-compose.tunnel.yml logs cloudflared
    ```
 
+### On Unraid
+
+The same compose file runs on Unraid; only getting the files and the `docker compose`
+command differ. Everything below is typed in Unraid's terminal (the `>_` icon at the top
+right of the web interface).
+
+1. From **Apps**, install **Docker Compose Manager**. It provides the `docker compose` command.
+2. If you installed Birdsong earlier from its Unraid template, stop and remove that container
+   in the **Docker** tab: the compose file uses the same name (`birdsong`) and LAN port (8095).
+3. Fetch this repository into appdata. Unraid has no `git` of its own, so a throwaway git
+   container does it:
+
+   ```bash
+   docker run --rm -v /mnt/user/appdata:/git alpine/git clone https://github.com/austinmabry/birdsong birdsong-src
+   ```
+
+   (Add `--branch <name>` after `clone` to take a branch other than `main`. If the repository
+   is private, download it as a ZIP from GitHub instead and unzip it into
+   `/mnt/user/appdata/birdsong-src` over the network share.)
+4. Make the settings file, then fill it in with `nano .env` (Ctrl+O saves, Ctrl+X quits):
+
+   ```bash
+   cd /mnt/user/appdata/birdsong-src && cp .env.example .env && chmod 600 .env
+   ```
+
+   `BIRDNET_URL` is your Unraid server's IP and BirdNET-Go's port, e.g.
+   `http://192.168.1.10:8080`. If BirdNET-Go has its own IP address on `br0`, Birdsong can
+   only reach it with **Settings > Docker > Host access to custom networks** switched on
+   (Advanced view; the Docker service must be stopped to change it).
+5. Build and start:
+
+   ```bash
+   docker compose -f docker-compose.tunnel.yml up -d --build
+   ```
+
+Both containers then appear in the **Docker** tab; start, stop and logs work there, but
+change settings in `.env` and run the command above again rather than editing them in the
+tab. They come back by themselves after a reboot. To update later:
+
+```bash
+cd /mnt/user/appdata/birdsong-src && docker run --rm -v "$PWD":/git alpine/git pull
+```
+
+```bash
+docker compose -f docker-compose.tunnel.yml build --pull && docker compose -f docker-compose.tunnel.yml up -d
+```
+
+Unraid's own **Check for updates** cannot update an image built on the server, so use these.
+
 ## 3. Publish Birdsong through the tunnel
 
 1. **Networking > Tunnels >** `birdsong` **> Routes > Add route > Published application.**
