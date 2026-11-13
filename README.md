@@ -88,8 +88,11 @@ sign-in that admits only the email addresses you list:
     cp .env.example .env && chmod 600 .env     # add your tunnel token and BirdNET-Go address
     docker compose -f docker-compose.tunnel.yml up -d --build
 
-The step-by-step guide, including the Cloudflare side, is in
-[docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md). See [Security](#security)
+Instead of a sign-in, you can let in just your family's homes by their
+static internet addresses. The step-by-step guide, covering both and the
+Cloudflare side, is in [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md).
+The page runs in smart-TV browsers from about 2020 on (Chromium 68 or newer;
+for LG, webOS 5 and later). See [Security](#security)
 for what protects it.
 
 ## HTTPS with Tailscale
@@ -168,7 +171,8 @@ Birdsong has two doors into the same page:
   Tailscale.
 - **Port 8081, the internet door**, for a Cloudflare Tunnel only, and never
   published on the host. It refuses any request that has not come through
-  Cloudflare Access (unless `REQUIRE_CLOUDFLARE_ACCESS=false`), limits each
+  Cloudflare Access, or, with `ALLOWED_IPS`, from one of the listed home
+  internet addresses (see the [guide](docs/cloudflare-tunnel.md)). It limits each
   visitor's request rate, logs who signed in, and adds HSTS and a stricter
   Content-Security-Policy that names the only outside sites the page uses
   (Wikipedia and Wikimedia Commons).

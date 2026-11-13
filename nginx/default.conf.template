@@ -39,7 +39,7 @@ limit_conn_status 429;
 limit_req_log_level warn;
 limit_conn_log_level warn;
 
-# ---- Cloudflare Access ----
+# ---- who may come in through the internet door ----
 # Cloudflare Access adds its signed token to every request it lets through. Unless
 # REQUIRE_CLOUDFLARE_ACCESS=false, the internet door refuses requests without one, so a tunnel
 # with no Access application in front of it stays closed instead of open to everyone.
@@ -49,10 +49,20 @@ map $http_cf_access_jwt_assertion $bs_has_access_token {
     ""      0;
     default 1;
 }
-# (/bs-error is exempt so that showing an error page cannot itself be refused.)
-map "${BS_REQUIRE_ACCESS}:$bs_has_access_token:$uri" $bs_access_refused {
-    "1:0:/bs-error" 0;
-    "~^1:0:"        1;
+# ALLOWED_IPS: home internet addresses that come in without a sign-in. The address is the
+# visitor's own as Cloudflare saw it (real_ip in the internet door), which a visitor cannot fake.
+geo $remote_addr $bs_ip_listed {
+    default 0;
+${BS_ALLOWED_IPS_GEO}}
+# Refused unless:  Access required, no list   -> a token
+#                  Access required, a list    -> a listed address or a token
+#                  no Access, a list          -> a listed address
+#                  no Access, no list         -> anyone (Cloudflare's own rules only)
+# /bs-error is exempt so that showing an error page cannot itself be refused.
+map "${BS_REQUIRE_ACCESS}${BS_HAVE_IP_LIST}:$bs_ip_listed$bs_has_access_token|$uri" $bs_access_refused {
+    "~\|/bs-error$" 0;
+    "~^1.:00\|"     1;
+    "~^01:0.\|"     1;
     default         0;
 }
 

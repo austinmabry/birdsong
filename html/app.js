@@ -1,4 +1,17 @@
 "use strict";
+/* Kept working in older smart-TV browsers (LG webOS from 2020, Chromium 68): no newer syntax,
+   and stand-ins for the two newer features the page relies on. */
+if (!Element.prototype.replaceChildren) Element.prototype.replaceChildren = function () {
+  while (this.lastChild) this.removeChild(this.lastChild);
+  this.append.apply(this, arguments);
+};
+(function () {   // rows spaced with flex "gap" need margins instead in browsers before Chromium 84
+  const d = document.createElement("div"); d.style.display = "flex"; d.style.flexDirection = "column"; d.style.rowGap = "1px";
+  d.append(document.createElement("div"), document.createElement("div"));
+  document.documentElement.append(d); const ok = d.scrollHeight === 1; d.remove();
+  if (!ok) document.documentElement.classList.add("no-flexgap");
+})();
+const firstOf = (...v) => v.find(x => x != null);
 /* ===================================================================
    Settings you may want to change
    =================================================================== */
@@ -156,7 +169,7 @@ async function fetchSpecies() {
   return rows.map(o => ({
     sci: o.scientific_name || o.scientificName || "",
     common: o.common_name || o.commonName || o.scientific_name || "Unnamed",
-    count: Number(o.count ?? o.total ?? o.count_in_period ?? 0),
+    count: Number(firstOf(o.count, o.total, o.count_in_period, 0)),
     first: o.first_heard || o.first_seen || o.first_heard_date || "",
     last: o.last_heard || o.latest_heard || o.last_seen || o.latest_seen || "",
     hourly: Array.isArray(o.hourly_counts) && o.hourly_counts.length === 24 ? o.hourly_counts : null,

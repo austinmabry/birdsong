@@ -77,6 +77,56 @@ Do this before the tunnel exists, so there is never a moment when the page is op
 4. Open the application again and note its **Application Audience (AUD) Tag**
    (under **Additional settings**). You need it, and your team name, in step 3.
 
+### Or: let in your homes by internet address, with no sign-in
+
+If the people watching have static home internet addresses, you can skip the sign-in
+altogether: only those homes can open the page, and nothing is ever typed on the TV.
+Two locks do this, one at Cloudflare and one in Birdsong, each enough on its own. Use this
+**instead of** the Access application above (don't create one for this address, or delete it).
+
+1. **Find each home's address as Cloudflare sees it.** On a device using that home's
+   internet, ideally the TV's own browser, open `https://www.cloudflare.com/cdn-cgi/trace`
+   and note the `ip=` line.
+   - If it has colons (`ip=2001:db8:...`), that home reaches Cloudflare over IPv6, and IPv6
+     addresses change within the home's range. List the home's whole IPv6 range (the
+     "prefix", such as `2001:db8:1234:5600::/56`, shown on the router's internet status page
+     or by the provider) as well as its IPv4 address.
+   - If the router's own internet (WAN) address differs from the `ip=` IPv4 address, the
+     provider shares one address among many customers (CGNAT): letting it in would let them
+     in too. Use the emailed code for that home instead.
+2. **Lock at Cloudflare: a firewall rule.** **Security rules > Create rule > Custom rules**,
+   name it `Birdsong: our homes only`, choose **Edit expression** and enter (with your
+   hostname and addresses):
+
+   ```
+   (http.host eq "birds.example.com" and not ip.src in {203.0.113.7 198.51.100.9 2001:db8:1234:5600::/56})
+   ```
+
+   Action **Block**, then **Deploy**. Everyone else gets Cloudflare's "blocked" page.
+3. **Lock in Birdsong**, in `.env` (step 2 below):
+
+   ```
+   REQUIRE_CLOUDFLARE_ACCESS=false
+   ALLOWED_IPS=203.0.113.7, 198.51.100.9, 2001:db8:1234:5600::/56
+   ```
+
+   The internet door then admits only these addresses, as Cloudflare reports them, which a
+   visitor cannot fake. The LAN door at home is unaffected.
+4. In step 3, leave **Protect with Access** off: there is no Access sign-in to check.
+
+What to know about this choice:
+
+- Anyone using either home's internet can watch: visitors on the Wi-Fi, and any device on
+  that network. For pictures of birds that is usually fine; remember the recordings.
+- If a provider ever changes an address, that home sees the "blocked" page until you
+  update both the rule and `ALLOWED_IPS` (then `docker compose -f docker-compose.tunnel.yml up -d`).
+- Birdsong's log shows which address each visit came from, not who it was.
+- **Both at once:** keep `REQUIRE_CLOUDFLARE_ACCESS=true` and set `ALLOWED_IPS`. Listed homes
+  get straight in and anyone else (you, travelling) signs in with an emailed code. On the
+  Cloudflare side that needs, instead of the firewall rule, the Access application with two
+  policies: **Bypass** with **Include: IP ranges** (the homes) and the **Allow** policy for
+  emails; and **Protect with Access** off, since bypassed visits carry no token.
+
 ## 2. Create the tunnel and start Birdsong
 
 1. **Networking > Tunnels > Create a tunnel.** Name it `birdsong`.
@@ -165,6 +215,11 @@ Unraid's own **Check for updates** cannot update an image built on the server, s
 
 ## 4. Check the locks
 
+If you let in homes by address instead of a sign-in: from one of those homes the page
+opens straight away; from a phone on mobile data (Wi-Fi off) Cloudflare shows its
+"blocked" page. Try `https://birds.example.com/api/v2/settings` from a listed home: it says
+*Not available.* The rest of this step is for the sign-in.
+
 From any computer:
 
 ```bash
@@ -209,6 +264,15 @@ All on the free plan:
   trip over smart-TV browsers. Access already keeps bots out.
 
 ## 6. On the TV
+
+**Which TVs.** Birdsong runs in the built-in browser of TVs whose browser is Chromium 68 or
+newer. For LG that is every model from 2020 on (webOS 5 and later): model names ending in
+X (such as OLED55CX, 2020), 1 (C1, 2021), 2, 3, 4 and so on. LG's 2018–2019 sets (C8, C9,
+B9 and the like; webOS 4, Chromium 53) have a browser too old for the page; on those, use
+a streaming stick with a modern browser, or cast a browser tab from a phone or laptop.
+
+If you let in homes by address, the TV opens the page with no sign-in at all; just
+bookmark it. With the emailed code:
 
 1. Open the TV's web browser and go to `https://birds.example.com`.
 2. Cloudflare's sign-in page asks for an email: enter one you listed, choose
@@ -285,3 +349,6 @@ apply when BirdNET-Go runs in a container on the same Docker network as Birdsong
 | The sample plate, "BirdNET-Go could not be reached" | `BIRDNET_URL` is wrong or unreachable from the container. Test from the server: `curl http://192.168.1.50:8080/api/v2/analytics/species/summary`. |
 | "BirdNET-Go asked for a sign-in" | BirdNET-Go's private mode is on. Switch it off (best), or see "BirdNET-Go should treat Birdsong as a stranger" above. |
 | The container stops at once, "BIRDNET_URL should look like..." | `BIRDNET_URL` must be just `http://address:port`, with no path. |
+| Cloudflare's "blocked" page at a home you listed | That home's address has changed, or it reaches Cloudflare over IPv6. Check `https://www.cloudflare.com/cdn-cgi/trace` from there and update the firewall rule and `ALLOWED_IPS`. |
+| *Not available.* at a home you listed, but no "blocked" page | The address is in the Cloudflare rule but not in `ALLOWED_IPS` (or `REQUIRE_CLOUDFLARE_ACCESS` is still true with no sign-in). |
+| The page stays on "Listening…" on a TV | The TV's browser is too old (LG before 2020); see step 6. |

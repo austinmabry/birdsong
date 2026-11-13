@@ -18,7 +18,7 @@ TMP="$(mktemp -d)"
 FAILS=0 PASSES=0
 
 cleanup() {
-    docker rm -f "$RUN-mock" "$RUN-app" "$RUN-open" "$RUN-bad" >/dev/null 2>&1
+    docker rm -f "$RUN-mock" "$RUN-app" "$RUN-open" "$RUN-bad" "$RUN-ips" "$RUN-both" >/dev/null 2>&1
     docker network rm "$NET" >/dev/null 2>&1
     rm -rf "$TMP"
 }
@@ -239,6 +239,14 @@ else
     fail "malformed BIRDNET_URL" "$(tail -3 "$TMP/badlog")"
 fi
 docker rm -f "$RUN-bad" >/dev/null 2>&1
+docker run --name "$RUN-bad" -e BIRDNET_URL=http://birdnet:8080 -e "ALLOWED_IPS=203.0.113.7; deny all" "$IMAGE" >/dev/null 2>&1
+docker logs "$RUN-bad" >"$TMP/badlog" 2>&1
+if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "ALLOWED_IPS should be" "$TMP/badlog"; then
+    pass "a malformed ALLOWED_IPS stops the container"
+else
+    fail "malformed ALLOWED_IPS" "$(tail -3 "$TMP/badlog")"
+fi
+docker rm -f "$RUN-bad" >/dev/null 2>&1
 docker run --name "$RUN-bad" -e "BIRDNET_URL=$(printf 'http://birdnet:8080\n; add_header X-Injected yes always')" "$IMAGE" >/dev/null 2>&1
 docker logs "$RUN-bad" >"$TMP/badlog" 2>&1
 if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "BIRDNET_URL should look like" "$TMP/badlog"; then
@@ -246,6 +254,31 @@ if [ "$(docker inspect -f '{{.State.ExitCode}}' "$RUN-bad")" != 0 ] && grep -q "
 else
     fail "multi-line BIRDNET_URL" "$(tail -3 "$TMP/badlog")"
 fi
+
+echo "Letting in home internet addresses"
+# Only these homes, no sign-in (REQUIRE_CLOUDFLARE_ACCESS=false with ALLOWED_IPS).
+docker run -d --name "$RUN-ips" --network "$NET" "${HARDENED[@]}" -e BIRDNET_URL=http://birdnet:8080 \
+    -e REQUIRE_CLOUDFLARE_ACCESS=false -e "ALLOWED_IPS=203.0.113.7, 2001:db8:1234:5600::/56" \
+    -p 127.0.0.1::80 -p 127.0.0.1::8081 "$IMAGE" >/dev/null
+# Listed homes without a sign-in, anyone else through Cloudflare Access.
+docker run -d --name "$RUN-both" --network "$NET" -e BIRDNET_URL=http://birdnet:8080 \
+    -e "ALLOWED_IPS=203.0.113.7" -p 127.0.0.1::8081 "$IMAGE" >/dev/null
+sleep 3
+IPS=$(docker port "$RUN-ips" 8081/tcp | head -1 | sed 's/.*://')
+IPS_LAN=$(docker port "$RUN-ips" 80/tcp | head -1 | sed 's/.*://')
+BOTH=$(docker port "$RUN-both" 8081/tcp | head -1 | sed 's/.*://')
+expect_code "listed IPv4 home, no sign-in" 200 "$IPS" / -H "CF-Connecting-IP: 203.0.113.7"
+expect_code "listed home reaches BirdNET-Go calls" 200 "$IPS" /api/v2/analytics/species/summary -H "CF-Connecting-IP: 203.0.113.7"
+expect_code "listed IPv6 home range" 200 "$IPS" / -H "CF-Connecting-IP: 2001:db8:1234:5600:1c2d:3e4f:5a6b:7c8d"
+expect_code "an address outside the list" 403 "$IPS" / -H "CF-Connecting-IP: 198.51.100.9"
+expect_code "outside the list, even with a sign-in token" 403 "$IPS" / -H "CF-Connecting-IP: 198.51.100.9" -H "Cf-Access-Jwt-Assertion: x"
+expect_code "neighbouring IPv6 range is outside" 403 "$IPS" / -H "CF-Connecting-IP: 2001:db8:1234:5700::1"
+expect_code "no Cloudflare address at all" 403 "$IPS" /
+blocked "settings still out of reach for a listed home" "$IPS" /api/v2/settings -H "CF-Connecting-IP: 203.0.113.7"
+expect_code "the LAN door is unaffected by the list" 200 "$IPS_LAN" /
+expect_code "both: listed home, no sign-in" 200 "$BOTH" / -H "CF-Connecting-IP: 203.0.113.7"
+expect_code "both: elsewhere with a sign-in" 200 "$BOTH" / -H "CF-Connecting-IP: 198.51.100.9" -H "Cf-Access-Jwt-Assertion: x"
+expect_code "both: elsewhere without a sign-in" 403 "$BOTH" / -H "CF-Connecting-IP: 198.51.100.9"
 
 echo
 echo "$PASSES passed, $FAILS failed"

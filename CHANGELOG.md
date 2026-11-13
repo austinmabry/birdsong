@@ -11,6 +11,9 @@
   requests that did not come through Cloudflare Access (setting:
   `REQUIRE_CLOUDFLARE_ACCESS`), rate-limits each visitor, logs who signed
   in, and sends HSTS and a stricter Content-Security-Policy.
+- `ALLOWED_IPS`: let in the listed home internet addresses through the
+  internet door without a sign-in, alone or alongside Cloudflare Access;
+  paired with a Cloudflare firewall rule in the guide.
 - Both containers run read-only with capabilities dropped, no privilege
   escalation and resource limits, on networks that keep cloudflared away
   from the LAN.
@@ -48,6 +51,10 @@
 - `tests/smoke-test.sh`, run on every push, checks all of the above.
 
 ### Screens left on
+- Works in older smart-TV browsers (Chromium 68 and later; LG TVs from
+  2020): no newer script syntax, a stand-in for `replaceChildren`, and
+  plain fallbacks for newer CSS (`clamp()`, `min()`, `inset`, flex `gap`,
+  `:focus-visible`).
 - When BirdNET-Go cannot be reached as the page opens, it now keeps trying
   every minute and recovers by itself, instead of staying on the sample.
 - Behind a sign-in such as Cloudflare Access, the page reloads to the
